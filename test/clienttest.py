@@ -127,6 +127,20 @@ class ClientTest(mcp_helper.MCPTest):
         self.checkValue(command, 'masterId', 'dummy-masterId')
         self.checkValue(command, 'limit', 3)
 
+    def testBrokenSend(self):
+        self.assertRaises(AssertionError, self.client._send, test = 'test')
+        def __del__(self, garbage):
+            self._send(garbage = garbage)
+        self.client.__del__ = __del__
+        self.assertRaises(mcp_error.ProtocolError,
+                          self.client.__del__, self.client, 'broken')
+
+    def testMarshallError(self):
+        self.queueResponse(('ProtocolError', 'just a test'), error = True)
+        self.assertRaises(mcp_error.ProtocolError, self.client.jobStatus, '')
+        self.queueResponse(('AssertionError', 'just a test'), error = True)
+        self.assertRaises(Exception, self.client.jobStatus, '')
+
 
 if __name__ == "__main__":
     testsuite.main()
