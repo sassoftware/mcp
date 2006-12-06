@@ -32,8 +32,21 @@ def commandResponse(func):
         try:
             res = False, func(self, command)
         except Exception, e:
+            if e.__class__.__name__ not in mcp_error.__dict__:
+                exc, e, bt = sys.exc_info()
+                print >> self.log, e.__class__.__name__, str(e)
+                print >> self.log, '\n'.join(traceback.format_tb(bt))
+                self.log.flush()
+                e = mcp_error.InternalServerError()
             res = True, (e.__class__.__name__, str(e))
-        self.responseTopic.send(command['uuid'], simplejson.dumps(res))
+        if type(command) != dict:
+            print >> self.log, "command is not a dict: %s" % str(command)
+            self.log.flush()
+        elif 'uuid' not in command:
+            print >> self.log, "no response address: %s" % str(command)
+            self.log.flush()
+        else:
+            self.responseTopic.send(command['uuid'], simplejson.dumps(res))
     return wrapper
 
 def logErrors(func):
@@ -45,6 +58,7 @@ def logErrors(func):
             print >> self.log, "Response Exception: (" + \
                 e.__class__.__name__ + ')', str(e)
             print >> self.log, '\n'.join(traceback.format_tb(bt))
+            self.log.flush()
     return wrapper
 
 class MCPServer(object):
@@ -60,7 +74,7 @@ class MCPServer(object):
 
         self.cfg = cfg
         if cfg.logPath:
-            self.log = open(os.path.join(cfg.logPath, 'error.log'), 'a')
+            self.log = open(os.path.join(cfg.logPath, 'mcp.log'), 'a+')
         else:
             self.log = sys.stderr
         # command queue is for sending commands *to* the mcp
@@ -137,7 +151,10 @@ class MCPServer(object):
         self.jobCounts[type] = count
 
     def handleJob(self, dataStr, force = False):
-        data = simplejson.loads(dataStr)
+        try:
+            data = simplejson.loads(dataStr)
+        except:
+            raise mcp_error.ProtocolError('unable to parse job')
         UUID = data['UUID']
         if (not force) and (UUID in self.jobs) and \
                 (self.jobs[UUID]['status'][0] not in ('finished', 'failed')):
@@ -244,8 +261,14 @@ class MCPServer(object):
     def checkIncomingCommands(self):
         dataStr = self.commandQueue.read()
         while dataStr:
-            data = simplejson.loads(dataStr)
-            self.handleCommand(data)
+            try:
+                data = simplejson.loads(dataStr)
+            except Exception, e:
+                print >> self.log, "JSON Error decoding command %s: %s\n%s" % \
+                    (e.__class__.__name__, str(e), dataStr)
+                self.log.flush()
+            else:
+                self.handleCommand(data)
             dataStr = self.commandQueue.read()
 
     def checkJobLoad(self):
@@ -263,6 +286,7 @@ class MCPServer(object):
         if jobData and (job.get('status', ('', ''))[0] not in ('finished',
                                                                'failed')):
             print >> self.log, "Respawning Job:", jobId
+            self.log.flush()
             self.handleJob(jobData, force = True)
 
     def slaveOffline(self, slaveId):
