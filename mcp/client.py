@@ -44,7 +44,7 @@ class MCPClient(object):
         action = sys._getframe(1).f_code.co_name
         assert action in self.__class__.__dict__
         if action.startswith('_'):
-            raise ProtocolError('Illegal Action: %s' % action)
+            raise mcp_error.ProtocolError('Illegal Action: %s' % action)
         data['action'] = sys._getframe(1).f_code.co_name
 
         self.command.send(simplejson.dumps(data))
