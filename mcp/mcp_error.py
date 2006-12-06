@@ -42,3 +42,7 @@ class JobConflict(MCPError):
         self.msg = msg
     def __str__(self):
         return self.msg
+
+class InternalServerError(MCPError):
+    def __str__(self):
+        return "An internal server error has occured"
