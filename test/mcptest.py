@@ -9,7 +9,7 @@ import testsuite
 testsuite.setup()
 import simplejson
 
-import os
+import os, sys
 import threading
 from mcp import queue
 from conary.conaryclient import cmdline
@@ -102,9 +102,16 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.responseTopic.incoming.insert( \
             0, self.masterResponse.response.outgoing.pop())
 
+    def assertLogContent(self, content):
+        f = open(os.path.join(self.cfg.logPath, 'mcp.log'))
+        data = f.read()
+        f.close()
+        assert content in data
+
     def testGetSuffix(self):
         assert server.getSuffix("1#x86") == 'x86'
         assert server.getSuffix("1#x86:~i486:~i586:~i686:~sse2|1#x86_64") == 'x86_64'
+        assert server.getSuffix("") == ""
 
     def testMarshallX86Jobs(self):
         self.submitBuild()
@@ -203,6 +210,86 @@ class McpTest(mcp_helper.MCPTest):
         res = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
 
         assert res == [False, u'test.rpath.local:build-0']
+
+    def testBrokenCommands(self):
+        self.mcp.commandQueue.incoming = [simplejson.dumps('absolutelyWrong')]
+        self.mcp.checkIncomingCommands()
+
+        self.assertLogContent('command is not a dict')
+
+        self.mcp.commandQueue.incoming = \
+            [simplejson.dumps({'absolutely' : 'Wrong'})]
+        self.mcp.checkIncomingCommands()
+        self.assertLogContent('no response address')
+
+        self.mcp.commandQueue.incoming = \
+            [simplejson.dumps({'absolutely' : 'Wrong', 'uuid' : 'bad'})]
+        self.mcp.checkIncomingCommands()
+
+        assert simplejson.loads(self.mcp.responseTopic.outgoing.pop()) == \
+            [True, ['InternalServerError',
+                    "An internal server error has occured"]]
+
+        self.mcp.commandQueue.incoming = ['worst yet']
+        self.mcp.checkIncomingCommands()
+
+        self.assertLogContent('No JSON object could be decoded')
+
+    def testLogFallback(self):
+        from mcp import config
+        cfg = config.MCPConfig()
+        cfg.logPath = None
+        mcp = server.MCPServer(cfg)
+        mcp.log == sys.stderr
+
+
+    def testDemandReturnCode(self):
+        res = self.mcp.demandJobSlave('1.0.1-1-1', 'x86_64')
+        assert res
+        assert len(self.mcp.demand['demand:x86_64'].outgoing) == 1
+        demanded = self.mcp.demand['demand:x86_64'].outgoing[0]
+        assert '1.0.1-1-1' in demanded
+        res = self.mcp.demandJobSlave('1.0.1-1-1', 'x86_64')
+        assert not res
+        assert len(self.mcp.demand['demand:x86_64'].outgoing) == 1
+
+    def testJobConflict(self):
+        build = self.getJsonBuild()
+        self.client.submitJob(build)
+        dataCommand = self.client.command.outgoing[0]
+        self.mcp.commandQueue.incoming = [dataCommand]
+        self.mcp.checkIncomingCommands()
+        res = self.mcp.responseTopic.outgoing.pop()
+
+        assert res == '[false, "test.rpath.local:build-0"]'
+        assert self.mcp.commandQueue.incoming == []
+
+        self.mcp.commandQueue.incoming = [dataCommand]
+        self.mcp.checkIncomingCommands()
+        res = self.mcp.responseTopic.outgoing.pop()
+        assert res == '[true, ["JobConflict", "Job already in progress"]]'
+
+    def testUnknownJob(self):
+        build = simplejson.loads(self.getJsonBuild())
+        build['type'] = 'random'
+        self.client.submitJob(simplejson.dumps(build))
+        dataCommand = self.client.command.outgoing[0]
+        self.mcp.commandQueue.incoming = [dataCommand]
+        self.mcp.checkIncomingCommands()
+        res = self.mcp.responseTopic.outgoing.pop()
+
+        assert res == '[true, ["UnknownJobType", "Unknown job type: random"]]'
+
+    def testBadJobData(self):
+        build = simplejson.loads(self.getJsonBuild())
+        build['type'] = 'random'
+        self.client.submitJob(build)
+        dataCommand = self.client.command.outgoing[0]
+        self.mcp.commandQueue.incoming = [dataCommand]
+        self.mcp.checkIncomingCommands()
+        res = self.mcp.responseTopic.outgoing.pop()
+
+        assert res == '[true, ["ProtocolError", "unable to parse job"]]'
 
 
     # test log handling
