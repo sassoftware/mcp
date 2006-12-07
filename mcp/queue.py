@@ -68,9 +68,6 @@ class Queue(object):
     def send(self, message):
         self.connection.send(self.connectionName, message)
 
-    def peek(self):
-        return self.inbound and self.inbound[0]
-
     def incrementLimit(self, increment = 1):
         self.lock.acquire()
         try:
