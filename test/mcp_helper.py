@@ -181,3 +181,9 @@ class MCPTest(testsuite.TestCase):
         self.failIf(d[key] != value,
                     "expected %s of %s but got %s" % (key, value, d[key]))
 
+    def assertLogContent(self, content):
+        f = open(os.path.join(self.cfg.logPath, 'mcp.log'))
+        data = f.read()
+        f.close()
+        assert content in data
+
