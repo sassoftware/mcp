@@ -15,7 +15,7 @@ from mcp import queue
 from conary.conaryclient import cmdline
 from conary import versions
 
-from mcp import server
+from mcp import server, mcp_error
 import mcp_helper
 
 class DummyQueue(object):
@@ -101,12 +101,6 @@ class McpTest(mcp_helper.MCPTest):
             slaveId, 'offline', "%s:%s" % (version, arch))
         self.mcp.responseTopic.incoming.insert( \
             0, self.masterResponse.response.outgoing.pop())
-
-    def assertLogContent(self, content):
-        f = open(os.path.join(self.cfg.logPath, 'mcp.log'))
-        data = f.read()
-        f.close()
-        assert content in data
 
     def testGetSuffix(self):
         assert server.getSuffix("1#x86") == 'x86'
@@ -290,6 +284,192 @@ class McpTest(mcp_helper.MCPTest):
         res = self.mcp.responseTopic.outgoing.pop()
 
         assert res == '[true, ["ProtocolError", "unable to parse job"]]'
+
+    def testSetSlaveTTL(self):
+        self.mcp.jobSlaves = {'master:slave' : {'status' : 'running',
+                                                'jobId' : 'rogueJob',
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.setSlaveTTL('master:slave', 0)
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        self.checkValue(control, 'node', 'master:slave')
+        self.checkValue(control, 'action', 'setTTL')
+        self.checkValue(control, 'TTL', 0)
+        assert 'protocolVersion' in control
+
+    def testUnknownHostTTL(self):
+        self.assertRaises(mcp_error.UnknownHost,
+                          self.mcp.setSlaveTTL, 'unknown', 0)
+
+
+    def testUnknownHostStopSlave(self):
+        self.assertRaises(mcp_error.UnknownHost,
+                          self.mcp.stopSlave, 'unknown', delayed = True)
+
+    def testStopSlaveDelayed(self):
+        self.mcp.jobSlaves = {'master:slave' : {'status' : 'running',
+                                                'jobId' : 'rogueJob',
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.stopSlave('master:slave', delayed = True)
+
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        # a delayed stop slave is the exact same thing as a TTL of zero
+        self.checkValue(control, 'node', 'master:slave')
+        self.checkValue(control, 'action', 'setTTL')
+        self.checkValue(control, 'TTL', 0)
+        assert 'protocolVersion' in control
+
+    def testStopSlaveImmediate(self):
+        self.mcp.jobSlaves = {'master:slave' : {'status' : 'running',
+                                                'jobId' : 'rogueJob',
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.stopSlave('master:slave', delayed = False)
+
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        self.checkValue(control, 'node', 'master')
+        self.checkValue(control, 'action', 'stopSlave')
+        self.checkValue(control, 'slaveId', 'master:slave')
+        assert 'protocolVersion' in control
+
+    def testSetSlaveLimitHost(self):
+        self.assertRaises(mcp_error.UnknownHost, self.mcp.setSlaveLimit,
+                          'master', 2)
+
+    def testSetSlaveLimit(self):
+        self.mcp.jobMasters = {'master' : {'slaves' : [],
+                                           'arch' : 'x86',
+                                           'limit' : 4}}
+
+        self.mcp.setSlaveLimit('master', 2)
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        self.checkValue(control, 'node', 'master')
+        self.checkValue(control, 'action', 'slaveLimit')
+        self.checkValue(control, 'limit', 2)
+        assert 'protocolVersion' in control
+
+
+    def testStopJobUnk(self):
+        self.assertRaises(mcp_error.UnknownJob,
+                          self.mcp.stopJob, 'test.rpath.local:build-22')
+
+    def testStopJob(self):
+        build = self.getJsonBuild()
+        self.mcp.jobSlaves = \
+            {'master:slave' : {'status' : 'running',
+                               'jobId' : 'test.rpath.local:build-22',
+                               'type' : '1.0.4-12-3:x86'}}
+        self.mcp.jobs = \
+            {'test.rpath.local:build-22' : {'data' : build,
+                                            'status' : 'running',
+                                            'slaveId' : 'master:slave'}}
+        self.mcp.stopJob('test.rpath.local:build-22')
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        self.checkValue(control, 'node', 'master:slave')
+        self.checkValue(control, 'action', 'stopJob')
+        self.checkValue(control, 'jobId', 'test.rpath.local:build-22')
+
+        assert 'protocolVersion' in control
+
+    def testHandleComMissing(self):
+        self.mcp.handleCommand({})
+        self.assertLogContent('no response address')
+
+    def testHandleComProtocol(self):
+        self.mcp.handleCommand({'protocolVersion' : 999999999999, 'uuid' : ''})
+        res = self.mcp.responseTopic.outgoing.pop()
+        assert res == \
+           '[true, ["ProtocolError", "Unknown Protocol Version: 999999999999"]]'
+
+    def testJobLoad(self):
+        self.mcp.jobCounts['1.2.3-4-5:x86'] = 2
+
+        self.mcp.checkJobLoad()
+        assert '1.2.3-4-5' in self.mcp.demand['demand:x86'].outgoing[0]
+        assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 1}
+
+        self.mcp.checkJobLoad()
+        assert len(self.mcp.demand['demand:x86'].outgoing) == 1
+        assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 1}
+
+
+    def testJobLoad2(self):
+        self.mcp.jobCounts['1.2.3-4-5:x86'] = 2
+        self.mcp.jobSlaveCounts['1.2.3-4-5:x86'] = 2
+
+        self.mcp.checkJobLoad()
+        'demand:x86' not in self.mcp.demand
+        assert self.mcp.demandCounts.get('1.2.3-4-5:x86', 0) == 0
+
+        self.mcp.jobCounts['1.2.3-4-5:x86'] += 1
+        self.mcp.checkJobLoad()
+        assert len(self.mcp.demand['demand:x86'].outgoing) == 1
+        assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 1}
+
+    def testRespawn(self):
+        build = self.getJsonBuild()
+        self.mcp.jobSlaves = \
+            {'master:slave' : {'status' : 'running',
+                               'jobId' : 'test.rpath.local:build-22',
+                               'type' : '1.0.4-12-3:x86'}}
+        self.mcp.jobs = \
+            {'test.rpath.local:build-22' : {'data' : build,
+                                            'status' : 'running',
+                                            'slaveId' : 'master:slave'}}
+
+        assert not self.mcp.jobQueues
+        assert not self.mcp.jobCounts
+        self.mcp.respawnJob('master:slave')
+        self.assertLogContent('Respawn')
+        assert self.mcp.jobQueues['job2.0.2-1-1:x86'].outgoing[0] == build
+        assert self.mcp.jobCounts == {'2.0.2-1-1:x86': 1}
+
+    def testRespawnData(self):
+        build = self.getJsonBuild()
+        self.mcp.jobSlaves = {'master:slave' : {'status' : 'running',
+                                                'jobId' : None,
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.respawnJob('master:slave')
+        assert not self.mcp.jobQueues
+        assert not self.mcp.jobCounts
+
+    def testSlaveOffline(self):
+        self.mcp.jobSlaves = {'master:slave' : {'status' : 'running',
+                                                'jobId' : None,
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.slaveOffline('master:slave')
+        assert self.mcp.jobSlaves == {}
+
+    def testGetSlave(self):
+        self.mcp.getSlave('master:slave')
+        assert self.mcp.jobMasters == \
+            {'master': {'limit': None,
+                        'arch': None,
+                        'slaves': ['master:slave']}}
+        assert self.mcp.jobSlaves == {'master:slave': {'status': None,
+                                                       'jobId': None}}
+
+    def testUnknownMaster(self):
+        self.mcp.getMaster('master')
+        assert self.mcp.jobMasters == \
+            {'master': {'limit': None, 'arch': None, 'slaves': []}}
+
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        self.checkValue(control, 'action', 'status')
+        self.checkValue(control, 'node', 'master')
+        assert 'protocolVersion' in control
+
+
+    def testUnknownSlave(self):
+        self.mcp.getSlave('master:slave')
+        # master would have been requested first
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        self.checkValue(control, 'action', 'status')
+        self.checkValue(control, 'node', 'master')
+        assert 'protocolVersion' in control
+
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        self.checkValue(control, 'action', 'status')
+        self.checkValue(control, 'node', 'master:slave')
+        assert 'protocolVersion' in control
 
 
     # test log handling
