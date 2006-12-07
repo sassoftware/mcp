@@ -158,17 +158,17 @@ def setup():
     if parent not in sys.path:
         sys.path.insert(0, parent)
 
-    # MCP specific tweaks
-    import mcp_helper
-    import stomp
-    stomp.Connection = mcp_helper.DummyConnection
-    #end MCP specific tweaks
-
     from conary.lib import util
     sys.excepthook = util.genExcepthook(True)
 
     # if we're running with COVERAGE_DIR, we'll start covering now
     from conary.lib import coveragehook
+
+    # MCP specific tweaks
+    import mcp_helper
+    import stomp
+    stomp.Connection = mcp_helper.DummyConnection
+    #end MCP specific tweaks
 
     # import debugger now that we have the path for it
     global debugger
