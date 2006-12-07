@@ -196,7 +196,7 @@ class MCPServer(object):
             control = {'protocolVersion' : PROTOCOL_VERSION,
                        'node' : slaveId.split(':')[0],
                        'action' : 'stopSlave',
-                       'slave' : slaveId}
+                       'slaveId' : slaveId}
             self.controlTopic.send(simplejson.dumps(control))
 
     def setSlaveLimit(self, masterId, limit):
@@ -224,7 +224,7 @@ class MCPServer(object):
 
     @commandResponse
     def handleCommand(self, data):
-        if data['protocolVersion'] == 1:
+        if data.get('protocolVersion') == 1:
             if data['action'] == 'submitJob':
                 return self.handleJob(data['data'])
             elif data['action'] == 'slaveStatus':
@@ -295,12 +295,26 @@ class MCPServer(object):
         masterId = slaveId.split(':')[0]
         if slaveId in self.jobSlaves:
             del self.jobSlaves[slaveId]
-        if slaveId in self.jobMasters[masterId]['slaves']:
+        if slaveId in self.getMaster(masterId)['slaves']:
             self.jobMasters[masterId]['slaves'].remove(slaveId)
+
+    def requestMasterStatus(self, masterId = 'masters'):
+        control = {'protocolVersion' : PROTOCOL_VERSION,
+                   'action' : 'status',
+                   'node' : masterId}
+        self.controlTopic.send(simplejson.dumps(control))
+
+    def requestSlaveStatus(self, slaveId = 'slaves'):
+        control = {'protocolVersion' : PROTOCOL_VERSION,
+                   'action' : 'status',
+                   'node' : slaveId}
+        self.controlTopic.send(simplejson.dumps(control))
 
     # warning: deliberate side effect of instantiating a master if
     # one did not exist
     def getMaster(self, masterId):
+        if masterId not in self.jobMasters:
+            self.requestMasterStatus(masterId)
         return self.jobMasters.setdefault(masterId, {'slaves' : [],
                                                      'arch' : None,
                                                      'limit' : None})
@@ -312,6 +326,8 @@ class MCPServer(object):
         master = self.getMaster(masterId)
         if slaveId not in master['slaves']:
             master['slaves'].append(slaveId)
+        if slaveId not in self.jobSlaves:
+            self.requestSlaveStatus(slaveId)
         return self.jobSlaves.setdefault(slaveId, {'status': None,
                                                    'jobId' : None})
 
