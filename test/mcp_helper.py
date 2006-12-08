@@ -7,6 +7,7 @@
 
 import os
 import testsuite
+import testhelp
 import random
 import tempfile
 
@@ -120,9 +121,9 @@ class ThreadedMCP(server.MCPServer, threading.Thread):
         return nvf[0], versions.VersionFromString(nvf[1]), \
             (nvf[2] and nvf[2] or '')
 
-class MCPTest(testsuite.TestCase):
+class MCPTest(testhelp.TestCase):
     def setUp(self):
-        testsuite.TestCase.setUp(self)
+        testhelp.TestCase.setUp(self)
         self.basePath = tempfile.mkdtemp(prefix = 'mcp')
         os.mkdir(os.path.join(self.basePath, 'log'))
         self.cfg = self.getMCPConfig()
@@ -146,7 +147,7 @@ class MCPTest(testsuite.TestCase):
     def tearDown(self):
         self.mcp.running = False
         util.rmtree(self.cfg.basePath)
-        testsuite.TestCase.tearDown(self)
+        testhelp.TestCase.tearDown(self)
 
     def getMCPConfig(self):
         cfg = config.MCPConfig()
