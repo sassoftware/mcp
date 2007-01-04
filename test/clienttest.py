@@ -141,6 +141,15 @@ class ClientTest(mcp_helper.MCPTest):
         self.queueResponse(('AssertionError', 'just a test'), error = True)
         self.assertRaises(Exception, self.client.jobStatus, '')
 
+    def testClearCache(self):
+        self.queueResponse(None)
+        self.client.clearCache('master')
+
+        command = self.getCommand()
+
+        self.checkValue(command, 'action', 'clearCache')
+        self.checkValue(command, 'masterId', 'master')
+
 
 if __name__ == "__main__":
     testsuite.main()
