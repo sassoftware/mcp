@@ -83,6 +83,9 @@ class MCPClient(object):
     def setSlaveLimit(self, masterId, limit):
         return self._send(masterId = masterId, limit = limit)
 
+    def clearCache(self, masterId):
+        return self._send(masterId = masterId)
+
     def debug(self):
         return self._send()
 
