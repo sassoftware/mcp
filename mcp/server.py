@@ -417,6 +417,8 @@ class MCPServer(object):
 
     def run(self):
         self.running = True
+        self.requestMasterStatus()
+        self.requestSlaveStatus()
         try:
             while self.running:
                 self.checkIncomingCommands()
