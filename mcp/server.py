@@ -222,6 +222,14 @@ class MCPServer(object):
                        'jobId' : jobId}
             self.controlTopic.send(simplejson.dumps(control))
 
+    def clearCache(self, masterId):
+        if masterId not in self.jobMasters:
+            raise mcp_error.UnknownHost("Unknown Host: %s" % masterId)
+        control = {'protocolVersion' : PROTOCOL_VERSION,
+                   'node' : masterId,
+                   'action' : 'clearImageCache'}
+        self.controlTopic.send(simplejson.dumps(control))
+
     @commandResponse
     def handleCommand(self, data):
         if data.get('protocolVersion') == 1:
@@ -230,6 +238,9 @@ class MCPServer(object):
             elif data['action'] == 'slaveStatus':
                 return self.jobMasters
             elif data['action'] == 'jobStatus':
+                jobId = data.get('jobId')
+                if jobId not in self.jobs:
+                    raise mcp_error.UnknownJob('Unknown job Id: %s' % jobId)
                 return self.jobs[data['jobId']]['status']
             elif data['action'] == 'stopMaster':
                 masterId = data['masterId']
@@ -248,6 +259,8 @@ class MCPServer(object):
                 self.setSlaveLimit(data['masterId'], data['limit'])
             elif data['action'] == 'setSlaveTTL':
                 self.setSlaveTTL(data['slaveId'], data['TTL'])
+            elif data['action'] == 'clearCache':
+                self.clearCache(data['masterId'])
             elif data['action'] == 'debug':
                 import epdb
                 epdb.st()
