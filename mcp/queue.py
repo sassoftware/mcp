@@ -53,15 +53,15 @@ class Queue(object):
                 self._unsubscribe()
             else:
                 self.inbound.insert(0, message.split('\n\n\n')[1].strip())
+                messageLine = [x for x in message.split('\n') \
+                                   if x.strip().startswith('message-id')][0]
+                messageId = messageLine[messageLine.index(':') + 1:].strip()
+                self.connection.ack(messageId)
+                # ack before unsubscribe, or race condition ensues
                 if self.limitedQueue:
                     self.queueLimit = max(self.queueLimit - 1, 0)
                     if not self.queueLimit:
                         self._unsubscribe()
-                messageLine = [x for x in message.split('\n') \
-                                   if x.strip().startswith('message-id')][0]
-                messageId = messageLine[messageLine.index(':') + 1:].strip()
-                #print "acking:", messageId
-                self.connection.ack(messageId)
         finally:
             self.lock.release()
 
@@ -75,6 +75,18 @@ class Queue(object):
                 if not self.queueLimit:
                     self._subscribe()
                 self.queueLimit += increment
+        finally:
+            self.lock.release()
+
+    def setLimit(self, limit):
+        self.lock.acquire()
+        try:
+            oldLimit = self.queueLimit
+            self.queueLimit = limit
+            if (self.queueLimit == 0) and (oldLimit != 0):
+                self._unsubscribe()
+            else:
+                self._subscribe()
         finally:
             self.lock.release()
 
