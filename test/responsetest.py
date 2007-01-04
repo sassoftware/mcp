@@ -76,6 +76,19 @@ class ResponseTest(mcp_helper.MCPTest):
         self.checkValue(resp, 'jobId', 'dummy-jobId')
         self.checkValue(resp, 'message', 'log emssage')
 
+    def testProtocol(self):
+        self.masterResponse.protocol(2)
+        resp = self.getMasterResponse()
+        self.checkValue(resp, 'event', 'protocol')
+        self.checkValue(resp, 'protocolVersion', 2)
+
+        # this needs to be tested at least twice to ensure it's having an effect
+        # protocolVersion is manipulated directly by the response object.
+        self.masterResponse.protocol(3)
+        resp = self.getMasterResponse()
+        self.checkValue(resp, 'event', 'protocol')
+        self.checkValue(resp, 'protocolVersion', 3)
+
 
 if __name__ == "__main__":
     testsuite.main()
