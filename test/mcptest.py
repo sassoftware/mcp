@@ -471,6 +471,34 @@ class McpTest(mcp_helper.MCPTest):
         self.checkValue(control, 'node', 'master:slave')
         assert 'protocolVersion' in control
 
+    def testBadJobId(self):
+        self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
+                                'action' : 'jobStatus',
+                                'jobId' : 'bad-job-id'})
+        res = self.mcp.responseTopic.outgoing.pop()
+        assert res == '[true, ["UnknownJob", "Unknown job Id: bad-job-id"]]'
+
+    def testMissingJobId(self):
+        self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
+                                'action' : 'jobStatus'})
+        res = self.mcp.responseTopic.outgoing.pop()
+        assert res == '[true, ["UnknownJob", "Unknown job Id: None"]]'
+
+    def testClearCache(self):
+        self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
+                                'action' : 'clearCache',
+                                'masterId' : 'testMaster'})
+        res = self.mcp.responseTopic.outgoing.pop()
+
+        assert res == '[true, ["UnknownHost", "Unknown Host: testMaster"]]'
+        self.mcp.getMaster('testMaster')
+        self.mcp.controlTopic.outgoing = []
+        self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
+                                'action' : 'clearCache',
+                                'masterId' : 'testMaster'})
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+        self.checkValue(control, 'action', 'clearImageCache')
+        self.checkValue(control, 'node', 'testMaster')
 
     # test log handling
     # ensure stopMaster is atomic
