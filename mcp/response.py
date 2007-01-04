@@ -12,12 +12,8 @@ from conary.lib import cfgtypes
 
 from mcp import queue
 
-class MCPResponseConfig(conarycfg.ConfigFile):
-    queueHost = '127.0.0.1'
-    queuePort = (cfgtypes.CfgInt, 61613)
-    namespace = 'mcp'
-
 class MCPResponse(object):
+    # config is client.MCPClientConfig
     def __init__(self, nodeName, cfg):
         self.cfg = cfg
         self.node = nodeName
@@ -31,7 +27,7 @@ class MCPResponse(object):
 
     def _send(self, **resp):
         resp['node'] = self.node
-        resp['protocolVersion'] = 1
+        resp.setdefault('protocolVersion', 1)
         event = sys._getframe(1).f_code.co_name
         assert event in self.__class__.__dict__
         if event.startswith('_'):
@@ -55,10 +51,15 @@ class MCPResponse(object):
     def masterOffline(self):
         self._send()
 
+    def protocol(self, protocolVersion):
+        self._send(protocolVersion = protocolVersion)
+
+
 if __name__ == '__main__':
     import bdb
     def run():
-        cfg = MCPResponseConfig()
+        from mcp import client
+        cfg = client.MCPClientConfig()
         response = MCPResponse(sys.argv[1], cfg)
         import epdb
         epdb.st()
