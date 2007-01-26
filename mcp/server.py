@@ -71,6 +71,7 @@ class MCPServer(object):
         self.jobSlaves = {}
         self.jobs = {}
         self.jobMasters = {}
+        self.logFiles = {}
 
         self.cfg = cfg
         if cfg.logPath:
@@ -92,16 +93,34 @@ class MCPServer(object):
                                                     namespace = cfg.namespace,
                                                     timeOut = 0)
         self.responseTopic.addDest('response')
+        # the channel
+        self.postQueue = queue.MultiplexedQueue(cfg.queueHost, cfg.queuePort,
+                                                autoSubscribe = False,
+                                                timeOut = 0)
+
+    def logJob(self, jobId, message):
+        if jobId not in self.logFiles:
+            if self.cfg.logPath:
+                self.logFiles[jobId] = \
+                    open(os.path.join( \
+                        cfg.logPath,
+                        jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
+                logFile = self.logFiles[jobId]
+                logFile.write(message)
+            else:
+                print jobId + ':', message
 
     def getVersion(self, version):
         cc = conaryclient.ConaryClient()
         try:
             l = version and (self.cfg.slaveTroveLabel + '/' + version) \
                 or self.cfg.slaveTroveLabel
-            troves = cc.repos.findTrove(\
+            troves = cc.repos.findTrove( \
                 None, (self.cfg.slaveTroveName, l, None))
         except TroveNotFound:
             return []
+        troves = [x for x in troves \
+                      if x[2].stronglySatisfies(deps.parseFlavor('xen,domU'))]
         if troves[0][2] is None:
             troves[0][2] == ''
         return troves[0]
@@ -120,13 +139,10 @@ class MCPServer(object):
                             autoSubscribe = False)
         count = self.demandCounts.get(demand, 0)
         if count < limit:
-            NVF = self.getVersion(version)
-            if NVF:
-                fullVersion = NVF[0] + '=' + str(NVF[1]) + \
-                    '[' + str(NVF[2]) + ']'
             data = {}
             data['protocolVersion'] = PROTOCOL_VERSION
-            data['troveSpec'] = fullVersion
+            data['troveSpec'] = '%s=%s/%s' % (self.cfg.slaveTroveName,
+                                              self.cfg.slaveTroveLabel, version)
             self.demand[demandName].send(simplejson.dumps(data))
             self.demandCounts[demand] = count + 1
             return True
@@ -221,6 +237,10 @@ class MCPServer(object):
                        'action' : 'stopJob',
                        'jobId' : jobId}
             self.controlTopic.send(simplejson.dumps(control))
+        else:
+            self.jobs[jobId] = {'status' : 
+            import epdb
+            epdb.st()
 
     def clearCache(self, masterId):
         if masterId not in self.jobMasters:
@@ -285,7 +305,9 @@ class MCPServer(object):
             dataStr = self.commandQueue.read()
 
     def checkJobLoad(self):
-        for job in self.jobCounts:
+        # generator is to prevent None from being split, which can happen
+        # if we stumble on a new job slave
+        for job in [x for x in self.jobCounts if x]:
             version, suffix = job.split(':')
             jobCount = self.jobCounts.get(job, 0)
             slaveCount = self.jobSlaveCounts.get(job, 0)
@@ -342,7 +364,8 @@ class MCPServer(object):
         if slaveId not in self.jobSlaves:
             self.requestSlaveStatus(slaveId)
         return self.jobSlaves.setdefault(slaveId, {'status': None,
-                                                   'jobId' : None})
+                                                   'jobId' : None,
+                                                   'type' : None})
 
     @logErrors
     def handleResponse(self, data):
@@ -364,7 +387,9 @@ class MCPServer(object):
                     if key in data:
                         oldInfo[key] = data[key]
             elif event == 'slaveStatus':
-                master = self.getMaster(node)
+                # a slave status can come from a master or a slave. simply
+                # splitting on : will always yield the master's name
+                master = self.getMaster(node.split(':')[0])
                 slaveId = data['slaveId']
                 if data['status'] != 'offline':
                     self.jobSlaves[slaveId] = \
@@ -411,11 +436,17 @@ class MCPServer(object):
                     self.jobs[jobId]['slaveId'] = None
                     self.jobSlaves[node]['jobId'] = None
                     self.jobSlaves[node]['status'] = 'idle'
+                    if jobId in self.logFiles:
+                        del self.logFiles[jobId]
                 self.jobs[jobId]['status'] = (data['status'],
                                               data['statusMessage'])
+            elif event == 'postJobOutput':
+                self.postQueue.send(data['dest'],
+                                    simplejson.dumps({'uuid': data['jobId'],
+                                                      'urls': data['urls']}))
             elif event == 'jobLog':
-                # FIXME: do real logging
-                raise mcp_error.ProtocolError(str(data))
+                slave = self.getSlave(node)
+                self.logJob(data['jobId'], data['message'])
         else:
             raise mcp_error.ProtocolError(\
                 "Unknown Protocol Version: %d\ndata: %s" % \
@@ -450,6 +481,7 @@ class MCPServer(object):
                 self.demand[name].disconnect()
         for name in self.jobQueues:
             self.jobQueues[name].disconnect()
+        self.postQueue.disconnect()
 
 
 if __name__ == '__main__':
@@ -460,7 +492,9 @@ if __name__ == '__main__':
     m.run()
 
 
-#client.submitJob(simplejson.dumps({'serialVersion': 1, 'type' : 'build', 'project' : 'foo.rpath.local', 'UUID': 'mint.rpath.local-build-25', 'name' : 'Foo', 'troveName' : 'group-core', 'troveVersion' : 'conary.rpath.com@rpl:1', 'troveFlavor': '1#x86', 'description' : 'thing to be built', 'buildType' : 1, 'data' : {'jsversion': '1.0.3'}}))
+#client.submitJob(simplejson.dumps({'description': 'No Description', 'troveItems': [{'trvFlavor': '', 'trvName': 'group-foo', 'useLock': False, 'trvVersion': '/foo.rpath.local@rpl:devel/1.0-1-1', 'trvLabel': 'foo.rpath.local@rpl:devel', 'shortHost': 'foo', 'instSetLock': False, 'versionLock': False, 'groupTroveItemId': 1, 'subGroup': 'group-test'}], 'serialVersion': 1, 'upstreamVersion': '1.0.0', 'recipe': "class GroupTest(GroupRecipe):\n    name = 'group-test'\n    version = '1.0.0'\n\n    autoResolve = False\n\n    def setup(r):\n        r.setLabelPath('foo.rpath.local@rpl:devel')\n        r.add('group-foo', 'foo.rpath.local@rpl:devel', '', groupName = 'group-test')\n", 'jobData': {'arch': '1#x86'}, 'project': {'hostname': 'foo', 'name': 'Foo', 'label': 'foo.rpath.local@rpl:devel', 'conaryCfg' : 'repositoryMap foo.rpath.local http://foo.rpath.local/rbuilder/repos/foo/'}, 'recipeName': 'group-test', 'type': 'cook', 'labelPath': ['foo.rpath.local@rpl:devel'], 'UUID': 'foo.rpath.local:group-1'})
+
+#client.submitJob(simplejson.dumps({'serialVersion': 1, 'type' : 'build', 'project' : {'name': 'Foo', 'hostname': 'foo', 'label': 'foo.rpath.local@rpl:devel', 'conaryCfg': 'threaded False'}, 'UUID': 'mint.rpath.local-build-25', 'name' : 'Foo', 'troveName' : 'group-core', 'troveVersion' : '/conary.rpath.com@rpl:devel//1/0:1.0.5-0.4-4', 'troveFlavor': '1#x86:cmov:i486:i586:i686:~!sse2|5#use:~MySQL-python.threadsafe:X:~!alternatives:~!bootstrap:~!builddocs:~buildtests:desktop:dietlibc:~!dom0:~!domU:emacs:gcj:~glibc.tls:gnome:~grub.static:gtk:ipv6:kde:~!kernel.debug:~!kernel.debugdata:~!kernel.numa:krb:ldap:nptl:~!openssh.smartcard:~!openssh.static_libcrypto:pam:pcre:perl:~!pie:~!postfix.mysql:python:qt:readline:sasl:~!selinux:~sqlite.threadsafe:ssl:tcl:tcpwrappers:tk:~!xen:~!xorg-x11.xprint', 'description' : 'thing to be built', 'buildType' : 1, 'data' : {'jsversion': '3.0.0', 'betaNag' : False, 'showMediaCheck': False, 'autoResolve': True, 'maxIsoSize': '681574400', 'anaconda-templates': 'anaconda-templates=/conary.rpath.com@rpl:devel//1/1.0.5-0.2-1[is: x86]'}}))
 
 # "job running" response
 #send /topic/mcp/response {"protocolVersion": 1, "node": "127.0.0.1:xen69", "event": "jobStatus", "status": "running", "statusMessage": "munging stuff", "jobId": "mint.rpath.local-build-25"}
