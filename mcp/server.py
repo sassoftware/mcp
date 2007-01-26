@@ -237,10 +237,6 @@ class MCPServer(object):
                        'action' : 'stopJob',
                        'jobId' : jobId}
             self.controlTopic.send(simplejson.dumps(control))
-        else:
-            self.jobs[jobId] = {'status' : 
-            import epdb
-            epdb.st()
 
     def clearCache(self, masterId):
         if masterId not in self.jobMasters:
