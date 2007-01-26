@@ -48,6 +48,9 @@ class MCPResponse(object):
     def masterStatus(self, arch, limit, slaveIds):
         self._send(arch = arch, limit = limit, slaves = slaveIds)
 
+    def postJobOutput(self, jobId, dest, urls):
+        self._send(jobId = jobId, dest = dest, urls = urls)
+
     def masterOffline(self):
         self._send()
 
