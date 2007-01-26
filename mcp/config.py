@@ -17,6 +17,5 @@ class MCPConfig(conarycfg.ConfigFile):
     queuePort = (cfgtypes.CfgInt, 61613)
     namespace = 'mcp'
 
-    slaveTroveName = 'group-core'
-    slaveTroveLabel = 'conary.rpath.com@rpl:1'
-
+    slaveTroveName = 'group-jobslave'
+    slaveTroveLabel = 'jobslave.rb.rpath.com@rpl:devel'
