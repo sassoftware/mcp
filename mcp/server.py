@@ -479,7 +479,7 @@ class MCPServer(object):
 
 
 def main():
-    cfg = config.McpConfig()
+    cfg = config.MCPConfig()
     cfg.read(os.path.join(os.path.sep, 'srv', 'rbuilder', 'mcp', 'config'))
     mcpServer = MCPServer(cfg)
     mcpServer.run()
