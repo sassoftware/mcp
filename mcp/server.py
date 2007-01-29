@@ -15,6 +15,7 @@ from conary.deps import deps
 
 from mcp import queue
 from mcp import mcp_error
+from mcp import config
 import traceback
 
 PROTOCOL_VERSION = 1
@@ -277,9 +278,6 @@ class MCPServer(object):
                 self.setSlaveTTL(data['slaveId'], data['TTL'])
             elif data['action'] == 'clearCache':
                 self.clearCache(data['masterId'])
-            elif data['action'] == 'debug':
-                import epdb
-                epdb.st()
             else:
                 raise mcp_error.IllegalCommand('Unknown action: %s' % \
                                                    data['action'])
@@ -480,34 +478,44 @@ class MCPServer(object):
         self.postQueue.disconnect()
 
 
-if __name__ == '__main__':
-    from mcp import config
-    cfg = config.MCPConfig()
-    cfg.logPath = None
-    m = MCPServer(cfg)
-    m.run()
+def main():
+    cfg = config.McpConfig()
+    cfg.read(os.path.join(os.path.sep, 'srv', 'rbuilder', 'mcp', 'config'))
+    mcpServer = MCPServer(cfg)
+    mcpServer.run()
 
-
-#client.submitJob(simplejson.dumps({'description': 'No Description', 'troveItems': [{'trvFlavor': '', 'trvName': 'group-foo', 'useLock': False, 'trvVersion': '/foo.rpath.local@rpl:devel/1.0-1-1', 'trvLabel': 'foo.rpath.local@rpl:devel', 'shortHost': 'foo', 'instSetLock': False, 'versionLock': False, 'groupTroveItemId': 1, 'subGroup': 'group-test'}], 'serialVersion': 1, 'upstreamVersion': '1.0.0', 'recipe': "class GroupTest(GroupRecipe):\n    name = 'group-test'\n    version = '1.0.0'\n\n    autoResolve = False\n\n    def setup(r):\n        r.setLabelPath('foo.rpath.local@rpl:devel')\n        r.add('group-foo', 'foo.rpath.local@rpl:devel', '', groupName = 'group-test')\n", 'jobData': {'arch': '1#x86'}, 'project': {'hostname': 'foo', 'name': 'Foo', 'label': 'foo.rpath.local@rpl:devel', 'conaryCfg' : 'repositoryMap foo.rpath.local http://foo.rpath.local/rbuilder/repos/foo/'}, 'recipeName': 'group-test', 'type': 'cook', 'labelPath': ['foo.rpath.local@rpl:devel'], 'UUID': 'foo.rpath.local:group-1'})
-
-#client.submitJob(simplejson.dumps({'serialVersion': 1, 'type' : 'build', 'project' : {'name': 'Foo', 'hostname': 'foo', 'label': 'foo.rpath.local@rpl:devel', 'conaryCfg': 'threaded False'}, 'UUID': 'mint.rpath.local-build-25', 'name' : 'Foo', 'troveName' : 'group-core', 'troveVersion' : '/conary.rpath.com@rpl:devel//1/0:1.0.5-0.4-4', 'troveFlavor': '1#x86:cmov:i486:i586:i686:~!sse2|5#use:~MySQL-python.threadsafe:X:~!alternatives:~!bootstrap:~!builddocs:~buildtests:desktop:dietlibc:~!dom0:~!domU:emacs:gcj:~glibc.tls:gnome:~grub.static:gtk:ipv6:kde:~!kernel.debug:~!kernel.debugdata:~!kernel.numa:krb:ldap:nptl:~!openssh.smartcard:~!openssh.static_libcrypto:pam:pcre:perl:~!pie:~!postfix.mysql:python:qt:readline:sasl:~!selinux:~sqlite.threadsafe:ssl:tcl:tcpwrappers:tk:~!xen:~!xorg-x11.xprint', 'description' : 'thing to be built', 'buildType' : 1, 'data' : {'jsversion': '3.0.0', 'betaNag' : False, 'showMediaCheck': False, 'autoResolve': True, 'maxIsoSize': '681574400', 'anaconda-templates': 'anaconda-templates=/conary.rpath.com@rpl:devel//1/1.0.5-0.2-1[is: x86]'}}))
-
-# "job running" response
-#send /topic/mcp/response {"protocolVersion": 1, "node": "127.0.0.1:xen69", "event": "jobStatus", "status": "running", "statusMessage": "munging stuff", "jobId": "mint.rpath.local-build-25"}
-
-# "job finished" response
-#send /topic/mcp/response {"protocolVersion": 1, "node": "127.0.0.1:xen69", "event": "jobStatus", "status": "finished", "statusMessage": "yay", "jobId": "mint.rpath.local-build-25"}
-
-
-# "master is online" response
-#send /topic/mcp/response {"protocolVersion": 1, "node": "127.0.0.1", "event": "masterStatus", "status": {"arch": "x86", "limit": 3, "slaves": []}}
-
-# "slave is building" response
-#send /topic/mcp/response {"protocolVersion": 1, "node": "127.0.0.1", "event": "slaveStatus", "status": "building", "slaveId": "127.0.0.1:xen69", "type": "1.0.3-0.5-14:x86"}
-
-# "slave is up" response
-#send /topic/mcp/response {"protocolVersion": 1, "node": "127.0.0.1", "event": "slaveStatus", "status": "running", "slaveId": "127.0.0.1:xen69", "type": "1.0.3-0.5-14:x86"}
-
-# "slave is down" response
-#send /topic/mcp/response {"protocolVersion": 1, "node": "127.0.0.1", "event": "slaveStatus", "status": "offline", "slaveId": "127.0.0.1:xen69", "type": "1.0.3-0.5-14:x86"}
-
+def runDaemon():
+    pidFile = os.path.join(os.path.sep, 'var', 'run', 'mcp.pid')
+    if os.path.exists(pidFile):
+        f = open(pidFile)
+        pid = f.read()
+        f.close()
+        statPath = os.path.join(os.path.sep, 'proc', pid, 'stat')
+        if os.path.exists(statPath):
+            f = open(statPath)
+            name = f.read().split()[1][1:-1]
+            if name == 'mcp':
+                print >> sys.stderr, "MCP already running as: %s" % pid
+                sys.stderr.flush()
+                sys.exit(-1)
+            else:
+                # pidfile doesn't point to an mcp
+                os.unlink(pidFile)
+        else:
+            # pidfile is stale
+            os.unlink(pidFile)
+    pid = os.fork()
+    if not pid:
+        os.setsid()
+        devNull = os.open(os.devnull, os.O_RDWR)
+        os.dup2(devNull, sys.stdout.fileno())
+        os.dup2(devNull, sys.stderr.fileno())
+        os.dup2(devNull, sys.stdin.fileno())
+        os.close(devNull)
+        pid = os.fork()
+        if not pid:
+            f = open(pidFile, 'w')
+            f.write(str(os.getpid()))
+            f.close()
+            main()
+            os.unlink(pidFile)
