@@ -120,8 +120,6 @@ class MCPServer(object):
                 None, (self.cfg.slaveTroveName, l, None))
         except TroveNotFound:
             return []
-        troves = [x for x in troves \
-                      if x[2].stronglySatisfies(deps.parseFlavor('xen,domU'))]
         if troves[0][2] is None:
             troves[0][2] == ''
         return troves[0]
