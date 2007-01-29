@@ -56,17 +56,3 @@ class MCPResponse(object):
 
     def protocol(self, protocolVersion):
         self._send(protocolVersion = protocolVersion)
-
-
-if __name__ == '__main__':
-    import bdb
-    def run():
-        from mcp import client
-        cfg = client.MCPClientConfig()
-        response = MCPResponse(sys.argv[1], cfg)
-        import epdb
-        epdb.st()
-    try:
-        run()
-    except bdb.BdbQuit:
-        pass
