@@ -86,6 +86,9 @@ class MCPClient(object):
     def clearCache(self, masterId):
         return self._send(masterId = masterId)
 
+    def getJSVersion(self):
+        return self._send()
+
 
 if __name__ == '__main__':
     import bdb
