@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2005-2006 rPath, Inc.
+# Copyright (c) 2006-2007 rPath, Inc.
 #
 # All rights reserved
 #
@@ -38,7 +38,7 @@ def commandResponse(func):
                 print >> self.log, e.__class__.__name__, str(e)
                 print >> self.log, '\n'.join(traceback.format_tb(bt))
                 self.log.flush()
-                e = mcp_error.InternalServerError()
+                #e = mcp_error.InternalServerError()
             res = True, (e.__class__.__name__, str(e))
         if type(command) != dict:
             print >> self.log, "command is not a dict: %s" % str(command)
@@ -250,6 +250,8 @@ class MCPServer(object):
         if data.get('protocolVersion') == 1:
             if data['action'] == 'submitJob':
                 return self.handleJob(data['data'])
+            elif data['action'] == 'getJSVersion':
+                return self.getTrailingRevision(version = '').split('-')[0]
             elif data['action'] == 'slaveStatus':
                 return self.jobMasters
             elif data['action'] == 'jobStatus':
@@ -483,6 +485,7 @@ def main():
     mcpServer.run()
 
 def runDaemon():
+    return main()
     pidFile = os.path.join(os.path.sep, 'var', 'run', 'mcp.pid')
     if os.path.exists(pidFile):
         f = open(pidFile)
