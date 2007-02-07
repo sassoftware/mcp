@@ -80,7 +80,7 @@ def main():
 
     UUID = options.label.split('@')[0] + '-build-' + \
         str(sum([(256 ** x[0]) * x[1] for x in \
-                 enumerate([ord(x) for x in os.urandom(16)])]))
+                 enumerate([ord(x) for x in os.urandom(8)])]))
 
     buildData = {}
     buildData['serialVersion'] = 1
@@ -109,6 +109,7 @@ def main():
     buildData['data'].update(dict([x.split(' ', 1) for x in options.advanced]))
 
     cfg = conarycfg.ConaryConfiguration(True)
+    cfg.initializeFlavors()
 
     cc = conaryclient.ConaryClient(cfg)
     nc = cc.getRepos()
@@ -125,7 +126,10 @@ def main():
     outputQueue = queue.Queue(options.queueHost, options.queuePort, outputQueue, timeOut = None)
     status, statusMessage = None, None
     while status not in ('built', 'finished', 'failed'):
-        newStatus, newStatusMessage = mcpClient.jobStatus(UUID)
+        try:
+            newStatus, newStatusMessage = mcpClient.jobStatus(UUID)
+        except Exception, e:
+            newStatus, newStatusMessage = 'error', e
         if (newStatus != status) or (statusMessage != newStatusMessage):
             status, statusMessage = newStatus, newStatusMessage
             print "%-79s\x0d" % ("%s: %s" % (status, statusMessage)),
