@@ -100,16 +100,17 @@ class MCPServer(object):
                                                 timeOut = 0)
 
     def logJob(self, jobId, message):
-        if jobId not in self.logFiles:
-            if self.cfg.logPath:
+        message = '\n'.join([x for x in message.splitlines() if x])
+        if self.cfg.logPath:
+            if jobId not in self.logFiles:
                 self.logFiles[jobId] = \
                     open(os.path.join( \
                         self.cfg.logPath,
                         jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
-                logFile = self.logFiles[jobId]
-                logFile.write(message)
-            else:
-                print jobId + ':', message
+            logFile = self.logFiles[jobId]
+            logFile.write(message)
+        else:
+            print jobId + ':', message
 
     def getVersion(self, version):
         cc = conaryclient.ConaryClient()
