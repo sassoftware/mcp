@@ -143,6 +143,7 @@ class MCPServer(object):
             data['protocolVersion'] = PROTOCOL_VERSION
             data['troveSpec'] = '%s=%s/%s' % (self.cfg.slaveTroveName,
                                               self.cfg.slaveTroveLabel, version)
+            print >> self.log, "demanding slave: %s on %s" % (data['troveSpec'], demandName)
             self.demand[demandName].send(simplejson.dumps(data))
             self.demandCounts[demand] = count + 1
             return True
@@ -324,6 +325,11 @@ class MCPServer(object):
         self.respawnJob(slaveId)
         masterId = slaveId.split(':')[0]
         if slaveId in self.jobSlaves:
+            type = self.jobSlaves[slaveId]['type']
+            count = self.jobSlaveCounts.get(type, 0)
+            count = max(count - 1, 0)
+            print >> self.log, "Setting slave count of type: %s to %d" % (type, count)
+            self.jobSlaveCounts[type] = count
             del self.jobSlaves[slaveId]
         if slaveId in self.getMaster(masterId)['slaves']:
             self.jobMasters[masterId]['slaves'].remove(slaveId)
@@ -403,11 +409,8 @@ class MCPServer(object):
                         # conditions
                         count = self.jobSlaveCounts.get(data['type'], 0)
                         self.jobSlaveCounts[data['type']] = count + 1
-                elif data['status'] == 'offline':
+                else:
                     self.slaveOffline(slaveId)
-                    count = self.jobSlaveCounts.get(data['type'], 0)
-                    count = max(count - 1, 0)
-                    self.jobSlaveCounts[data['type']] = count
             elif event == 'jobStatus':
                 slave = self.getSlave(node)
                 jobId = data['jobId']
