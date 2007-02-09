@@ -99,7 +99,7 @@ def main():
     queueName = ''.join([hex(ord(x))[2:] for x in os.urandom(16)])
     buildData['outputQueue'] = queueName
     outputQueue = queue.Queue(options.queueHost, options.queuePort,
-                              outputQueue, timeOut = None)
+                              queueName, timeOut = None)
 
     buildData['type'] = 'build'
 
