@@ -15,6 +15,8 @@ from conary import conarycfg
 from conary import conaryclient
 from conary.conaryclient import cmdline
 from mint import buildtypes
+from mint import buildtemplates
+from mint import data as mintdata
 
 from mcp import client
 from mcp import queue
@@ -95,6 +97,8 @@ def main():
     buildData['project']['name'] = options.title
 
     outputQueue = ''.join([hex(ord(x))[2:] for x in os.urandom(16)])
+    outputQueue = queue.Queue(options.queueHost, options.queuePort,
+                              outputQueue, timeOut = None)
 
     buildData['outputQueue'] = outputQueue
     buildData['type'] = 'build'
@@ -107,6 +111,16 @@ def main():
     buildData['data'] = {}
     buildData['data']['jsversion'] = str(mcpClient.getJSVersion())
     buildData['data'].update(dict([x.split(' ', 1) for x in options.advanced]))
+
+    template = buildtemplates.getDataTemplate(buildtypes.__dict__[options.TYPE])
+
+
+    for key, val in [x for x in buildData['data'].iteritems()]:
+        dataType = template.get(key, [mintdata.RDT_STRING])[0]
+        if dataType == mintdata.RDT_INT:
+            buildData['data'][key] = int(val)
+        elif dataType == mintdata.RDT_BOOL:
+            buildData['data'][key] = bool(int(val))
 
     cfg = conarycfg.ConaryConfiguration(True)
     cfg.initializeFlavors()
@@ -121,9 +135,9 @@ def main():
     buildData['troveVersion'] = NVF[1].freeze()
     buildData['troveFlavor'] = NVF[2].freeze()
 
+    print "submitting:", UUID
     mcpClient.submitJob(simplejson.dumps(buildData))
 
-    outputQueue = queue.Queue(options.queueHost, options.queuePort, outputQueue, timeOut = None)
     status, statusMessage = None, None
     while status not in ('built', 'finished', 'failed'):
         try:
