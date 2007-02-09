@@ -96,11 +96,11 @@ def main():
     buildData['project']['conaryCfg'] = '\n'.join(options.config)
     buildData['project']['name'] = options.title
 
-    outputQueue = ''.join([hex(ord(x))[2:] for x in os.urandom(16)])
+    queueName = ''.join([hex(ord(x))[2:] for x in os.urandom(16)])
+    buildData['outputQueue'] = queueName
     outputQueue = queue.Queue(options.queueHost, options.queuePort,
                               outputQueue, timeOut = None)
 
-    buildData['outputQueue'] = outputQueue
     buildData['type'] = 'build'
 
     cfg = client.MCPClientConfig()
