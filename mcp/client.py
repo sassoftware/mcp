@@ -33,7 +33,7 @@ class MCPClient(object):
         self.response = queue.Topic(cfg.queueHost, cfg.queuePort, self.uuid,
                                     namespace = cfg.namespace, timeOut = None)
 
-    def __del__(self):
+    def disconnect(self):
         self.command.disconnect()
         self.response.disconnect()
 
@@ -97,6 +97,7 @@ if __name__ == '__main__':
         client = MCPClient(cfg)
         import epdb
         epdb.st()
+        client.disconnect()
     try:
         run()
     except bdb.BdbQuit:
