@@ -40,9 +40,6 @@ def main():
 
     parser.add_option("-n", "--name", dest = "name", help = "Name of build")
 
-    parser.add_option("-l", "--label", dest = 'label',
-                     help = "Label of project")
-
     parser.add_option("-c", "--config", dest = 'config',
                       help = "conary config", action = 'append', default = [])
 
@@ -80,19 +77,34 @@ def main():
         parser.error("Type must be one of: %s" % \
                          (', '.join(buildtypes.validBuildTypes)))
 
-    UUID = options.label.split('@')[0] + '-build-' + \
-        str(sum([(256 ** x[0]) * x[1] for x in \
-                 enumerate([ord(x) for x in os.urandom(8)])]))
-
     buildData = {}
     buildData['serialVersion'] = 1
+
+    cfg = conarycfg.ConaryConfiguration(True)
+    cfg.initializeFlavors()
+
+    cc = conaryclient.ConaryClient(cfg)
+    nc = cc.getRepos()
+
+    n, v, f = cmdline.parseTroveSpec(args[0])
+    NVF = nc.findTrove(None, (n, v, f), cc.cfg.flavor)[0]
+
+    labelStr = str(NVF[1].branch().label())
+    buildData['troveName'] = NVF[0]
+    buildData['troveVersion'] = NVF[1].freeze()
+    buildData['troveFlavor'] = NVF[2].freeze()
+
+    UUID = labelStr.split('@')[0] + '-build-' + \
+        str(sum([(256 ** x[0]) * x[1] for x in \
+                     enumerate([ord(x) for x in os.urandom(8)])]))
+
     buildData['UUID'] = UUID
     buildData['buildType'] = buildtypes.validBuildTypes[options.TYPE]
     buildData['name'] = options.name
 
     buildData['project'] = {}
-    buildData['project']['hostname'] = options.label.split('.')[0]
-    buildData['project']['label'] = options.label
+    buildData['project']['hostname'] = labelStr.split('.')[0]
+    buildData['project']['label'] = labelStr
     buildData['project']['conaryCfg'] = '\n'.join(options.config)
     buildData['project']['name'] = options.title
 
@@ -114,7 +126,6 @@ def main():
 
     template = buildtemplates.getDataTemplate(buildtypes.__dict__[options.TYPE])
 
-
     for key, val in [x for x in buildData['data'].iteritems()]:
         dataType = template.get(key, [mintdata.RDT_STRING])[0]
         if dataType == mintdata.RDT_INT:
@@ -122,19 +133,10 @@ def main():
         elif dataType == mintdata.RDT_BOOL:
             buildData['data'][key] = bool(int(val))
 
-    cfg = conarycfg.ConaryConfiguration(True)
-    cfg.initializeFlavors()
-
-    cc = conaryclient.ConaryClient(cfg)
-    nc = cc.getRepos()
-
-    n, v, f = cmdline.parseTroveSpec(args[0])
-    NVF = nc.findTrove(None, (n, v, f), cc.cfg.flavor)[0]
-
-    buildData['troveName'] = NVF[0]
-    buildData['troveVersion'] = NVF[1].freeze()
-    buildData['troveFlavor'] = NVF[2].freeze()
-
+    timeSubmitted = time.time()
+    timeStarted = None
+    timeBuilt = None
+    timeFinished = None
     print "submitting:", UUID
     mcpClient.submitJob(simplejson.dumps(buildData))
 
@@ -144,6 +146,8 @@ def main():
             newStatus, newStatusMessage = mcpClient.jobStatus(UUID)
         except Exception, e:
             newStatus, newStatusMessage = 'error', e
+        if (newStatus != 'waiting') and (status == 'waiting'):
+            timeStarted = time.time()
         if (newStatus != status) or (statusMessage != newStatusMessage):
             status, statusMessage = newStatus, newStatusMessage
             print "%-79s\x0d" % ("%s: %s" % (status, statusMessage)),
@@ -153,12 +157,23 @@ def main():
     print ""
 
     if status == 'built':
+        timeBuilt = time.time()
         dataStr = outputQueue.read()
         data = simplejson.loads(dataStr)
         for url, type in data['urls']:
             os.system('wget %s -P %s' % (url, options.directory))
         mcpClient.stopJob(UUID)
+
+    timeFinished = time.time()
+    mcpClient.disconnect()
     outputQueue.disconnect()
+
+    print "Seconds waiting:", timeStarted - timeSubmitted
+    if timeBuilt:
+        print "Seconds building:", timeBuilt - timeStarted
+        print "Seconds downloading:", timeFinished - timeBuilt
+    print "Total:", timeFinished - timeStarted
+
 
 if __name__ == '__main__':
     main()
