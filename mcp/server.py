@@ -38,7 +38,7 @@ def commandResponse(func):
                 print >> self.log, e.__class__.__name__, str(e)
                 print >> self.log, '\n'.join(traceback.format_tb(bt))
                 self.log.flush()
-                #e = mcp_error.InternalServerError()
+                e = mcp_error.InternalServerError()
             res = True, (e.__class__.__name__, str(e))
         if type(command) != dict:
             print >> self.log, "command is not a dict: %s" % str(command)
@@ -51,9 +51,9 @@ def commandResponse(func):
     return wrapper
 
 def logErrors(func):
-    def wrapper(self, command):
+    def wrapper(self, *args, **kwargs):
         try:
-            func(self, command)
+            func(self, *args, **kwargs)
         except:
             exc, e, bt = sys.exc_info()
             print >> self.log, "Response Exception: (" + \
@@ -277,7 +277,7 @@ class MCPServer(object):
             elif data['action'] == 'setSlaveLimit':
                 self.setSlaveLimit(data['masterId'], data['limit'])
             elif data['action'] == 'setSlaveTTL':
-                self.setSlaveTTL(data['slaveId'], data['TTL'])
+                self.setSlaveTTL(data.get('slaveId'), data['TTL'])
             elif data['action'] == 'clearCache':
                 self.clearCache(data['masterId'])
             else:
