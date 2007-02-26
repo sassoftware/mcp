@@ -10,7 +10,7 @@ import sys
 from conary import conarycfg
 from conary.lib import cfgtypes
 
-from mcp import queue
+from mcp import queue, mcp_error
 
 class MCPResponse(object):
     # config is client.MCPClientConfig
@@ -31,7 +31,7 @@ class MCPResponse(object):
         event = sys._getframe(1).f_code.co_name
         assert event in self.__class__.__dict__
         if event.startswith('_'):
-            raise ProtocolError('Illegal Event: %s' % event)
+            raise mcp_error.ProtocolError('Illegal Event: %s' % event)
         resp['event'] = sys._getframe(1).f_code.co_name
         self.response.send(simplejson.dumps(resp))
 
