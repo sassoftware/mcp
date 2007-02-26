@@ -128,12 +128,15 @@ class ClientTest(mcp_helper.MCPTest):
         self.checkValue(command, 'limit', 3)
 
     def testBrokenSend(self):
+        # test triggering an action that's not defined
         self.assertRaises(AssertionError, self.client._send, test = 'test')
-        def __del__(self, garbage):
+        def __doc__(self, garbage):
             self._send(garbage = garbage)
-        self.client.__del__ = __del__
+        self.client.__doc__ = __doc__
+
+        # test triggering an action that starts with _
         self.assertRaises(mcp_error.ProtocolError,
-                          self.client.__del__, self.client, 'broken')
+                          self.client.__doc__, self.client, 'broken')
 
     def testMarshallError(self):
         self.queueResponse(('ProtocolError', 'just a test'), error = True)
@@ -149,6 +152,29 @@ class ClientTest(mcp_helper.MCPTest):
 
         self.checkValue(command, 'action', 'clearCache')
         self.checkValue(command, 'masterId', 'master')
+
+    def testGetJSVersion(self):
+        self.queueResponse(None)
+        self.client.getJSVersion()
+
+        command = self.getCommand()
+
+        self.checkValue(command, 'action', 'getJSVersion')
+
+    def testDisconnect(self):
+        mc = client.MCPClient(self.clientCfg)
+        class MockDisc(object):
+            def __init__(self):
+                self.connected = True
+            def disconnect(self):
+                self.connected = False
+        mc.command = MockDisc()
+        mc.response = MockDisc()
+        mc.disconnect()
+
+        self.failIf(mc.command.connected, "Command Queue was not disconnected")
+        self.failIf(mc.response.connected,
+                    "Response Topic was not disconnected")
 
 
 if __name__ == "__main__":
