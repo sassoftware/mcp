@@ -11,6 +11,7 @@ import simplejson
 
 from mcp import client
 from mcp import mcp_error
+from mcp import response
 
 import mcp_helper
 
@@ -88,6 +89,27 @@ class ResponseTest(mcp_helper.MCPTest):
         resp = self.getMasterResponse()
         self.checkValue(resp, 'event', 'protocol')
         self.checkValue(resp, 'protocolVersion', 3)
+
+    def testPostJobOutput(self):
+        self.slaveResponse.postJobOutput('dummy-build-5', 'dummy-dest',
+                                         ['http://foo/UUID', 'Dummy Build'])
+
+        resp = self.getSlaveResponse()
+        self.checkValue(resp, 'event', 'postJobOutput')
+        self.checkValue(resp, 'urls',  ['http://foo/UUID', 'Dummy Build'])
+        self.checkValue(resp, 'jobId', 'dummy-build-5')
+
+    def testIllegalEvent(self):
+        respObj = response.MCPResponse('dummyNode', self.clientCfg)
+        self.assertRaises(AssertionError, respObj._send, event = 'notLegal')
+        def __doc__(garbage):
+            respObj._send(garbage = garbage)
+        respObj.__doc__ = __doc__
+
+        # test triggering an action that starts with _
+        self.assertRaises(mcp_error.ProtocolError,
+                          respObj.__doc__, 'broken')
+
 
 
 if __name__ == "__main__":
