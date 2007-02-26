@@ -21,11 +21,7 @@ from mint import data as mintdata
 from mcp import client
 from mcp import queue
 
-def submitJob(buildData):
-    mcpClient = client.MCPClient(cfg)
-
-
-def main():
+def main(envArgs = sys.argv[1:]):
     usage = "usage: %prog [options] trovespec"
     parser = optparse.OptionParser(usage)
 
@@ -56,7 +52,7 @@ def main():
                       help = "Build specific avanced options",
                       default = [], action = "append")
 
-    (options, args) = parser.parse_args()
+    (options, args) = parser.parse_args(envArgs)
 
     if options.name is None:
         options.name = options.title
