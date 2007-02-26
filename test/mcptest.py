@@ -8,12 +8,17 @@
 import testsuite
 testsuite.setup()
 import simplejson
+import StringIO
+import time
 
 import os, sys
 import threading
 from mcp import queue
+from mcp import constants
+from conary import conaryclient
 from conary.conaryclient import cmdline
 from conary import versions
+from conary.errors import TroveNotFound
 
 from mcp import server, mcp_error
 import mcp_helper
@@ -85,7 +90,7 @@ class McpTest(mcp_helper.MCPTest):
         data = simplejson.loads(dataStr)
         troveSpec = data['troveSpec']
         nvf = cmdline.parseTroveSpec(troveSpec)
-        version = str(versions.VersionFromString(nvf[1]).trailingRevision())
+        version = nvf[1].split('/')[1]
         data = {}
         slaveId = '%s:slave%d' % (self.masterResponse.node, self.slaveId)
         self.slaveId += 1
@@ -149,6 +154,10 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.jobMasters = {'master': {'arch' : 'x86',
                                           'limit': 2,
                                           'slaves': ['master:slave0']}}
+        self.mcp.jobSlaves = {'master:slave0' : {'type' : '2.0.2-1-1:x86',
+                                                 'status' : 'idle',
+                                                 'jobId': None}}
+
         self.stopJobSlave('2.0.2-1-1', 'master:slave0', arch = 'x86')
 
         self.mcp.checkResponses()
@@ -445,6 +454,7 @@ class McpTest(mcp_helper.MCPTest):
                         'arch': None,
                         'slaves': ['master:slave']}}
         assert self.mcp.jobSlaves == {'master:slave': {'status': None,
+                                                       'type': None,
                                                        'jobId': None}}
 
     def testUnknownMaster(self):
@@ -500,12 +510,403 @@ class McpTest(mcp_helper.MCPTest):
         self.checkValue(control, 'action', 'clearImageCache')
         self.checkValue(control, 'node', 'testMaster')
 
-    # test log handling
-    # ensure stopMaster is atomic
+    def testLogJob(self):
+        assert not self.mcp.logFiles
+        self.mcp.logJob('dummy-build-26', 'test message')
+        assert self.mcp.logFiles
+        assert 'dummy-build-26' in self.mcp.logFiles
+        self.mcp.logFiles['dummy-build-26'].close()
 
-    # test response commands out of order
-    # test commands more thoroughly
+        logPath = self.mcp.cfg.logPath
+        try:
+            self.mcp.cfg.logPath = None
+            out, err = self.captureOutput(self.mcp.logJob,
+                                         'dummy-build-26', 'test message')
+            assert out == 'dummy-build-26: test message\n'
+            assert err == ''
+        finally:
+            self.mcp.cfg.logPath = logPath
 
+    def testGetVersion(self):
+        # mock out the conaryclient object to catch the repos call
+        class MockClient(object):
+            class MockRepos(object):
+                def findTrove(self, *args, **kwargs):
+                    print args, kwargs
+                    return (('dummy', 'version', None),)
+            repos = MockRepos()
+
+        ConaryClient = conaryclient.ConaryClient
+        try:
+            conaryclient.ConaryClient = MockClient
+            out, err = \
+                self.captureOutput(server.MCPServer.getVersion, self.mcp, '')
+            refOut = "(None, ('group-core', 'products.rpath.com@rpath:js-1', " \
+                "None)) {}\n"
+            self.failIf(out != refOut, "findTrove expected: %s but got: %s" % \
+                            (refOut, out))
+        finally:
+            conaryclient.ConaryClient = ConaryClient
+
+
+    def testGetMissingVersion(self):
+        class MockClient(object):
+            class MockRepos(object):
+                def findTrove(self, *args, **kwargs):
+                    raise TroveNotFound('Dummy Call')
+            repos = MockRepos()
+
+        ConaryClient = conaryclient.ConaryClient
+        try:
+            conaryclient.ConaryClient = MockClient
+            res = server.MCPServer.getVersion(self.mcp, '')
+            self.failIf(res != [], "Expected getVersion to return [] "
+                        "but got: %s" % str(res))
+        finally:
+            conaryclient.ConaryClient = ConaryClient
+
+    def testDummyCook(self):
+        self.mcp.handleJob(simplejson.dumps({'type': 'cook',
+                                             'UUID': 'dummy-cook-47',
+                                             'jobData' : {'arch': 'x86'}}))
+
+        self.failIf('dummy-cook-47' not in self.mcp.jobs,
+                    "Cook job was not recorded")
+
+    def testLogErrors(self):
+        class Foo(object):
+            def __init__(self):
+                self.log = StringIO.StringIO()
+            @server.logErrors
+            def crash(self):
+                raise AssertionError, 'Purposely raised'
+
+        f = Foo()
+        f.crash()
+        data = f.log.getvalue()
+        assert 'Purposely raise' in data
+
+    def testDisconnect(self):
+        class MockDisc(object):
+            def __init__(self):
+                self.connected = True
+            def disconnect(self):
+                self.connected = False
+
+        self.mcp.commandQueue = MockDisc()
+        self.mcp.responseTopic = MockDisc()
+        self.mcp.controlTopic = MockDisc()
+        self.mcp.demand['demand:x86'] = MockDisc()
+        self.mcp.jobQueues['job3.0.0-1-1:x86'] = MockDisc()
+        self.mcp.postQueue = MockDisc()
+
+        self.mcp.running = True
+        self.mcp.disconnect()
+        self.failIf(self.mcp.commandQueue.connected, "Command Queue was not disconnected")
+        self.failIf(self.mcp.responseTopic.connected,
+                    "Response Topic was not disconnected")
+        self.failIf(self.mcp.controlTopic.connected,
+                    "Control Topic was not disconnected")
+        self.failIf(self.mcp.demand['demand:x86'].connected,
+                    "Demand Queue was not disconnected")
+        self.failIf(self.mcp.jobQueues['job3.0.0-1-1:x86'].connected,
+                    "Demand Queue was not disconnected")
+        self.failIf(self.mcp.postQueue.connected,
+                    "Post Queue was not disconnected")
+
+    def testUnkJobStart(self):
+        jobId = 'dummy-build-45'
+        slaveId = 'master:slave'
+        self.mcp.handleResponse({'node' : slaveId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'jobStatus',
+                                 'jobId' : jobId,
+                                 'status' : 'running',
+                                 'statusMessage' : ''})
+        self.failIf('master:slave' not in self.mcp.jobSlaves,
+                    "slave was not recorded through jobStatus")
+        self.failIf('master' not in self.mcp.jobMasters,
+                    "master was not recorded through jobStatus")
+        self.failIf(jobId not in self.mcp.jobs, "job was not recorded")
+        self.failIf(self.mcp.jobs[jobId]['slaveId'] != slaveId,
+                    "job was not associated with it's slave")
+        self.failIf(self.mcp.jobSlaves[slaveId]['jobId'] != jobId,
+                    "slave was not associtated with it's job")
+
+    def testKnownJobStart(self):
+        jobId = 'dummy-build-21'
+        slaveId = 'master:slave'
+
+        self.mcp.jobs = {jobId : {'status' : ('waiting', ''),
+                                  'data' : None,
+                                  'slaveId': None}}
+        self.mcp.jobSlaves = {'master:slave': {'status' : 'idle',
+                                               'type': '3.0.0-1-1:x86',
+                                               'jobId' : None}}
+
+        self.mcp.jobCounts = {'3.0.0-1-1:x86': 2}
+
+        self.mcp.handleResponse({'node' : slaveId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'jobStatus',
+                                 'jobId' : jobId,
+                                 'status' : 'running',
+                                 'statusMessage' : ''})
+        self.failIf('master:slave' not in self.mcp.jobSlaves,
+                    "slave was not recorded through jobStatus")
+        self.failIf('master' not in self.mcp.jobMasters,
+                    "master was not recorded through jobStatus")
+        self.failIf(jobId not in self.mcp.jobs, "job was not recorded")
+        self.failIf(self.mcp.jobs[jobId]['slaveId'] != slaveId,
+                    "job was not associated with it's slave")
+        self.failIf(self.mcp.jobSlaves[slaveId]['jobId'] != jobId,
+                    "slave was not associtated with it's job")
+
+        self.failIf(self.mcp.jobCounts != {'3.0.0-1-1:x86': 1},
+                    "job count was not decremented properly")
+
+    def testStopJobStatus(self):
+        jobId = 'dummy-build-23'
+        slaveId = 'master:slave'
+
+        self.mcp.jobs = {jobId : {'status' : ('running', ''),
+                                  'data' : None,
+                                  'slaveId': slaveId}}
+
+        self.mcp.jobSlaves = {'master:slave': {'status' : 'running',
+                                               'type': '3.0.0-1-1:x86',
+                                               'jobId' : jobId}}
+
+        self.mcp.logFiles = {jobId: 'dummy logfile'}
+        self.mcp.handleResponse({'node' : slaveId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'jobStatus',
+                                 'jobId' : jobId,
+                                 'status' : 'finished',
+                                 'statusMessage' : ''})
+
+        self.failIf(self.mcp.logFiles,
+                    "Log file handler should have been removed")
+
+        self.failIf(self.mcp.jobs[jobId]['slaveId'] != None,
+                    "job was not disassociated with it's slave upon compeltion")
+
+        self.failIf(self.mcp.jobSlaves[slaveId]['jobId'] != None,
+                    "slave was not disassociated with it's job upon completion")
+
+    def testJobLog(self):
+        jobId = 'dummy-build-96'
+        slaveId = 'master:slave'
+        self.mcp.handleResponse({'node' : slaveId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'jobLog',
+                                 'jobId' : jobId,
+                                 'message' : 'fake message'})
+        self.failIf(jobId not in self.mcp.logFiles, "log file was not opened")
+
+    def testPostJobOutput(self):
+        jobId = 'dummy-build-32'
+        slaveId = 'master:slave'
+        self.mcp.handleResponse({'node' : slaveId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'postJobOutput',
+                                 'jobId' : jobId,
+                                 'urls' : ['http://fake/1', 'test image'],
+                                 'dest' : 'fake'})
+
+        assert self.mcp.postQueue.outgoing == \
+            ['{"uuid": "dummy-build-32", ' \
+                 '"urls": ["http://fake/1", "test image"]}']
+
+    def testBadResponseProtocol(self):
+        jobId = 'dummy-build-54'
+        slaveId = 'master:slave'
+        self.mcp.handleResponse({'node' : slaveId,
+                                 'protocolVersion' : 999999})
+
+        f = open(os.path.join(self.mcp.cfg.logPath, 'mcp.log'))
+        data = f.read()
+        f.close()
+
+        self.failIf('Unknown Protocol Version: 999999' not in data,
+                    "Protocol Error fort bad version was not logged")
+
+    def testMasterOffline(self):
+        masterId = 'testmaster'
+        slaveId = masterId + ':slave'
+        self.mcp.jobMasters = {masterId: {'limit' : 1, 'arch': 'x86',
+                                          'slaves' : [slaveId]}}
+        self.mcp.jobSlaves = {slaveId : {'status' : 'idle',
+                                         'type' : '3.0.0-1-1:x86',
+                                         'jobId' : None}}
+        self.mcp.handleResponse({'node' : masterId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'masterOffline'})
+
+        self.failIf(self.mcp.jobMasters, "Master was not removed")
+        self.failIf(self.mcp.jobSlaves, "Slave was not removed with master")
+
+    def testMasterStatus(self):
+        masterId = 'testmaster'
+        slaveId = masterId + ':slave'
+        self.mcp.jobMasters = {masterId: {'limit' : 1, 'arch': 'x86',
+                                          'slaves' : [slaveId]}}
+        self.mcp.jobSlaves = {slaveId : {'status' : 'idle',
+                                         'type' : '3.0.0-1-1:x86',
+                                         'jobId' : None}}
+
+        self.mcp.handleResponse({'node' : masterId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'masterStatus',
+                                 'arch' : 'x86',
+                                 'limit' : 1,
+                                 'slaves' : []})
+
+        self.failIf(self.mcp.jobSlaves,
+                    "Slave was not removed when master reported it missing")
+        self.failIf(self.mcp.jobMasters[masterId]['slaves'],
+                    "Slave was not disassociated from master")
+
+
+    def testCommandJSVersion(self):
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'getJSVersion'})
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+
+        assert not err
+        # this data comes from the test suite. overloaded getVersion
+        # see mcp_helper
+        assert data == '3.0.0'
+
+
+    def testCommandSlaveStatus(self):
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'slaveStatus'})
+
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert not err
+        assert data == {}
+
+    def testCommandJobStatus(self):
+        jobId = 'dummy-cook-1'
+        self.mcp.jobs = {jobId : {'status' : ('running', ''),
+                                  'data' : None, 'slaveId' : None}}
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'jobStatus',
+                                'jobId' : jobId})
+
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert not err
+        assert data == ['running', '']
+
+    def testCommandStopMaster(self):
+        masterId = 'master64'
+        slaveId = masterId + ':slave'
+        self.mcp.jobMasters = {masterId : {'limit' : 1,
+                                           'arch' : 'x86_64',
+                                           'slaves' : [slaveId]}}
+        self.mcp.jobSlaves = {slaveId: {'status' : 'idle',
+                                        'type' : '3.0.0-1-1', 'jobId' : None}}
+
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'stopMaster',
+                                'masterId' : masterId,
+                                'delayed' : False})
+
+        assert self.mcp.controlTopic.outgoing == \
+            ['{"node": "master64", "action": "stopSlave", '
+             '"slaveId": "master64:slave", "protocolVersion": 1}',
+             '{"node": "master64", "action": "slaveLimit", "limit": 0, '
+             '"protocolVersion": 1}']
+
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert not err
+        assert data is None
+
+    def testCommandStopUnkMaster(self):
+        masterId = 'master64'
+
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'stopMaster',
+                                'masterId' : masterId,
+                                'delayed' : False})
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert err
+        assert data == ['UnknownHost', 'Unknown Host: %s' % masterId]
+
+    def testCommandStopUnkSlave(self):
+        masterId = 'master64'
+        slaveId = masterId + ":slave"
+
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'stopSlave',
+                                'slaveId' : slaveId,
+                                'delayed' : False})
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert err
+        assert data == ['UnknownHost', 'Unknown Host: %s' % slaveId]
+
+    def testCommandStopJob(self):
+        jobId = 'dummy-build-54'
+
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'stopJob',
+                                'jobId' : jobId})
+
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert err
+        self.failIf(data != ['UnknownJob', 'Unknown Job ID: %s' % jobId],
+                    "Job was not reported as unknown")
+
+    def testCommandSetSlaveLimit(self):
+        masterId = 'master64'
+
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'setSlaveLimit',
+                                'masterId' : masterId,
+                                'limit' : 1})
+
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert err
+        self.failIf(data != ['UnknownHost', 'Unknown Host: %s' % masterId],
+                    "Host was not reported as unknown")
+
+    def testCommandSetSlaveTTL(self):
+        masterId = 'master'
+        slaveId = masterId + ':slave2'
+
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'setSlaveTTL',
+                                'slaveId' : slaveId,
+                                'TTL' : 500})
+
+        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert err
+        self.failIf(data != ['UnknownHost', 'Unknown Host: %s' % slaveId],
+                    "Host was not reported as unknown")
+
+    def testRunMcp(self):
+        sleep = time.sleep
+        class IterationComplete(Exception):
+            pass
+
+        def newSleep(*args, **kwargs):
+            raise IterationComplete
+
+        try:
+            time.sleep = newSleep
+            self.assertRaises(IterationComplete, self.mcp.run)
+        finally:
+            time.sleep = sleep
 
 
 if __name__ == "__main__":
