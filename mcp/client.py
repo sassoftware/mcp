@@ -90,15 +90,15 @@ class MCPClient(object):
         return self._send()
 
 
-if __name__ == '__main__':
-    import bdb
-    def run():
-        cfg = MCPClientConfig()
-        client = MCPClient(cfg)
-        import epdb
-        epdb.st()
-        client.disconnect()
-    try:
-        run()
-    except bdb.BdbQuit:
-        pass
+#if __name__ == '__main__':
+#    import bdb
+#    def run():
+#        cfg = MCPClientConfig()
+#        client = MCPClient(cfg)
+#        import epdb
+#        epdb.st()
+#        client.disconnect()
+#    try:
+#        run()
+#    except bdb.BdbQuit:
+#        pass
