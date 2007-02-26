@@ -229,6 +229,59 @@ class QueueTest(mcp_helper.MCPTest):
         assert q.inbound == ['test']
         assert q.connection.acks == ['test-message']
 
+    def testNamespace(self):
+        q = queue.Queue('dummyhost', 12345, dest = 'queue', namespace = 'test')
+        self.failIf(q.connectionName != '/queue/test/queue',
+                    "Expected a queueName of /queue/test/queue but got %s" % \
+                        q.connectionName)
+
+        q = queue.Queue('dummyhost', 12345, dest = 'noname', namespace = '')
+        self.failIf(q.connectionName != '/queue/noname',
+                    "Expected a queueName of /queue/noname but got %s" % \
+                        q.connectionName)
+
+    def testSetLimit(self):
+        q = queue.Queue('dummyhost', 12345, dest = 'limittest',
+                        namespace = 'test')
+        q.subscribed = True
+        def MockSubscribe():
+            raise AssertionError('subscribe should not have been called')
+        def MockUnsubscribe():
+            q.subscribed = False
+        q._unsubscribe = MockUnsubscribe
+        q._subscribe = MockSubscribe
+
+        q.setLimit(0)
+        assert q.queueLimit == 0
+        self.failIf(q.subscribed,
+                    "setting a queueLimit of 0 did not trigger an unsubscribe")
+
+    def testSetLimit2(self):
+        q = queue.Queue('dummyhost', 12345, dest = 'limittest',
+                        namespace = 'test')
+        q.setLimit(0)
+        q.subscribed = False
+        def MockSubscribe():
+            q.subscribed = True
+        def MockUnsubscribe():
+            raise AssertionError('unsubscribe should not have been called')
+        q.setLimit(1)
+        assert q.queueLimit == 1
+        q._unsubscribe = MockUnsubscribe
+        q._subscribe = MockSubscribe
+        self.failIf(q.subscribed,
+                    "setting a queueLimit of 1 did not trigger an unsubscribe")
+
+    def testMultiplexedDest(self):
+        q = queue.MultiplexedQueue('dummyhost', 12345,
+                                   dest = ['first', 'second'],
+                                   namespace = 'test')
+
+        self.failIf(q.connectionNames != \
+                        ['/queue/test/first', '/queue/test/second'],
+                    "Expected /queue/test/fist and /queue/test/second but "
+                    "got: %s" % str(q.connectionNames))
+
 
 if __name__ == "__main__":
     testsuite.main()
