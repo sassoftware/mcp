@@ -5,7 +5,7 @@
 # All rights reserved
 #
 
-import os
+import os, sys
 import testsuite
 import testhelp
 import random
@@ -113,6 +113,9 @@ class ThreadedMCP(server.MCPServer, threading.Thread):
         server.MCPServer.__init__(self, *args, **kwargs)
 
     def getVersion(self, version):
+        if not version:
+            return ('dummy', versions.VersionFromString( \
+                    '/products.rpath.com@rpath:js-1-devel/3.0.0-1-1'), '')
         if '-' not in version:
             version += '-1-1'
         nvf = cmdline.parseTroveSpec('%s=/%s/%s' % \
@@ -188,3 +191,26 @@ class MCPTest(testhelp.TestCase):
         f.close()
         assert content in data
 
+    def captureOutput(self, func, *args, **kwargs):
+        # note this function returns stdout and stderr in main memory
+        # not appropriate for extremely large output
+        oldErr = os.dup(sys.stderr.fileno())
+        oldOut = os.dup(sys.stdout.fileno())
+        outFd, outFn = tempfile.mkstemp()
+        errFd, errFn = tempfile.mkstemp()
+        os.dup2(errFd, sys.stderr.fileno())
+        os.dup2(outFd, sys.stdout.fileno())
+        os.close(outFd)
+        os.close(errFd)
+        try:
+            func(*args, **kwargs)
+        finally:
+            os.dup2(oldErr, sys.stderr.fileno())
+            os.dup2(oldOut, sys.stdout.fileno())
+        outF = open(outFn)
+        out = outF.read()
+        outF.close()
+        errF = open(errFn)
+        err = errF.read()
+        errF.close()
+        return out, err
