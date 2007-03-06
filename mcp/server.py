@@ -16,6 +16,8 @@ from conary.deps import deps
 from mcp import queue
 from mcp import mcp_error
 from mcp import config
+from mcp import jobstatus
+from mcp import slavestatus
 import traceback
 
 PROTOCOL_VERSION = 1
@@ -392,15 +394,14 @@ class MCPServer(object):
                 # splitting on : will always yield the master's name
                 master = self.getMaster(node.split(':')[0])
                 slaveId = data['slaveId']
-                if data['status'] != 'offline':
+                if data['status'] != slavestatus.OFFLINE:
                     self.jobSlaves[slaveId] = \
-                        {'status' : (data['status'] == 'running') \
-                             and 'idle' or data['status'],
+                        {'status' : data['status'],
                          'jobId': None,
                          'type': data['type']}
                     if slaveId not in master['slaves']:
                         master['slaves'].append(slaveId)
-                    if data['status'] == 'building':
+                    if data['status'] == slavestatus.BUILDING:
                         # remove it from the demand queue
                         count = self.demandCounts.get(data['type'], 0)
                         count = max(count - 1, 0)
@@ -420,7 +421,7 @@ class MCPServer(object):
                                  data['statusMessage']),
                      'slaveId' : node,
                      'data' : 'jobData' in data and data['jobData'] or None})
-                if data['status'] == 'running':
+                if data['status'] == jobstatus.RUNNING:
                     if not firstSeen:
                         # only tweak the job count if we knew of a job. useful
                         # for graceful recovery.
@@ -429,11 +430,11 @@ class MCPServer(object):
                         self.jobCounts[slave['type']] = count
                     self.jobSlaves[node]['jobId'] = jobId
                     self.jobs[jobId]['slaveId'] = node
-                    self.jobSlaves[node]['status'] = 'active'
-                elif data['status'] in ('finished', 'failed'):
+                    self.jobSlaves[node]['status'] = slavestatus.ACTIVE
+                elif data['status'] in (jobstatus.FINISHED, jobstatus.FAILED):
                     self.jobs[jobId]['slaveId'] = None
                     self.jobSlaves[node]['jobId'] = None
-                    self.jobSlaves[node]['status'] = 'idle'
+                    self.jobSlaves[node]['status'] = slavestatus.IDLE
                     if jobId in self.logFiles:
                         del self.logFiles[jobId]
                 self.jobs[jobId]['status'] = (data['status'],
