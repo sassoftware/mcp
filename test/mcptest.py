@@ -20,7 +20,7 @@ from conary.conaryclient import cmdline
 from conary import versions
 from conary.errors import TroveNotFound
 
-from mcp import server, mcp_error
+from mcp import server, mcp_error, jobstatus, slavestatus
 import mcp_helper
 
 class DummyQueue(object):
@@ -94,7 +94,7 @@ class McpTest(mcp_helper.MCPTest):
         data = {}
         slaveId = '%s:slave%d' % (self.masterResponse.node, self.slaveId)
         self.slaveId += 1
-        for event in ('building', 'running'):
+        for event in (slavestatus.BUILDING, slavestatus.STARTED):
             self.masterResponse.slaveStatus(slaveId, event,
                                             "%s:%s" % (version, arch))
             self.mcp.responseTopic.incoming.insert( \
@@ -103,7 +103,7 @@ class McpTest(mcp_helper.MCPTest):
 
     def stopJobSlave(self, version, slaveId, arch = 'x86'):
         self.masterResponse.slaveStatus( \
-            slaveId, 'offline', "%s:%s" % (version, arch))
+            slaveId, slavestatus.OFFLINE, "%s:%s" % (version, arch))
         self.mcp.responseTopic.incoming.insert( \
             0, self.masterResponse.response.outgoing.pop())
 
@@ -186,7 +186,7 @@ class McpTest(mcp_helper.MCPTest):
         assert 'master' in self.mcp.jobMasters
         assert 'master:slave0' in self.mcp.jobMasters['master']['slaves']
         assert self.mcp.jobSlaves['master:slave0'] == \
-            {'status': 'idle', 'type': '2.0.2-1-1:x86', 'jobId': None}
+            {'status': slavestatus.IDLE, 'type': '2.0.2-1-1:x86', 'jobId': None}
 
     def testCommandResponse(self):
         build = self.getJsonBuild()
@@ -621,7 +621,7 @@ class McpTest(mcp_helper.MCPTest):
                                  'protocolVersion' : 1,
                                  'event' : 'jobStatus',
                                  'jobId' : jobId,
-                                 'status' : 'running',
+                                 'status' : jobstatus.RUNNING,
                                  'statusMessage' : ''})
         self.failIf('master:slave' not in self.mcp.jobSlaves,
                     "slave was not recorded through jobStatus")
@@ -637,10 +637,10 @@ class McpTest(mcp_helper.MCPTest):
         jobId = 'dummy-build-21'
         slaveId = 'master:slave'
 
-        self.mcp.jobs = {jobId : {'status' : ('waiting', ''),
+        self.mcp.jobs = {jobId : {'status' : (jobstatus.WAITING, ''),
                                   'data' : None,
                                   'slaveId': None}}
-        self.mcp.jobSlaves = {'master:slave': {'status' : 'idle',
+        self.mcp.jobSlaves = {'master:slave': {'status' : slavestatus.IDLE,
                                                'type': '3.0.0-1-1:x86',
                                                'jobId' : None}}
 
@@ -650,7 +650,7 @@ class McpTest(mcp_helper.MCPTest):
                                  'protocolVersion' : 1,
                                  'event' : 'jobStatus',
                                  'jobId' : jobId,
-                                 'status' : 'running',
+                                 'status' : jobstatus.RUNNING,
                                  'statusMessage' : ''})
         self.failIf('master:slave' not in self.mcp.jobSlaves,
                     "slave was not recorded through jobStatus")
@@ -669,11 +669,11 @@ class McpTest(mcp_helper.MCPTest):
         jobId = 'dummy-build-23'
         slaveId = 'master:slave'
 
-        self.mcp.jobs = {jobId : {'status' : ('running', ''),
+        self.mcp.jobs = {jobId : {'status' : (jobstatus.RUNNING, ''),
                                   'data' : None,
                                   'slaveId': slaveId}}
 
-        self.mcp.jobSlaves = {'master:slave': {'status' : 'running',
+        self.mcp.jobSlaves = {'master:slave': {'status' : slavestatus.ACTIVE,
                                                'type': '3.0.0-1-1:x86',
                                                'jobId' : jobId}}
 
@@ -682,7 +682,7 @@ class McpTest(mcp_helper.MCPTest):
                                  'protocolVersion' : 1,
                                  'event' : 'jobStatus',
                                  'jobId' : jobId,
-                                 'status' : 'finished',
+                                 'status' : jobstatus.FINISHED,
                                  'statusMessage' : ''})
 
         self.failIf(self.mcp.logFiles,

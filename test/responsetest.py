@@ -12,6 +12,8 @@ import simplejson
 from mcp import client
 from mcp import mcp_error
 from mcp import response
+from mcp import jobstatus
+from mcp import slavestatus
 
 import mcp_helper
 
@@ -37,23 +39,25 @@ class ResponseTest(mcp_helper.MCPTest):
             '/topic/test/response'
 
     def testJobStatus(self):
-        self.slaveResponse.jobStatus('dummy-jobId', 'running', 'huzzah')
+        self.slaveResponse.jobStatus('dummy-jobId', jobstatus.RUNNING,
+                                     'test message')
+
         resp = self.getSlaveResponse()
         self.checkValue(resp, 'event', 'jobStatus')
-        self.checkValue(resp, 'status', 'running')
+        self.checkValue(resp, 'status', jobstatus.RUNNING)
         self.checkValue(resp, 'node', 'master:slave')
         self.checkValue(resp, 'jobId', 'dummy-jobId')
-        self.checkValue(resp, 'statusMessage', 'huzzah')
+        self.checkValue(resp, 'statusMessage', 'test message')
 
     def testSlaveStatus(self):
-        self.masterResponse.slaveStatus('dummy-slaveId', 'running',
+        self.masterResponse.slaveStatus('dummy-slaveId', slavestatus.ACTIVE,
                                         '2.0.2-5-12:x86')
         resp = self.getMasterResponse()
         self.checkValue(resp, 'event', 'slaveStatus')
         self.checkValue(resp, 'node', 'master')
         self.checkValue(resp, 'slaveId', 'dummy-slaveId')
         self.checkValue(resp, 'type', '2.0.2-5-12:x86')
-        self.checkValue(resp, 'status', 'running')
+        self.checkValue(resp, 'status', slavestatus.ACTIVE)
 
     def testMasterStatus(self):
          self.masterResponse.masterStatus('x86', 2, [])
