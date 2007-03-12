@@ -190,7 +190,7 @@ class MCPServer(object):
         else:
             raise mcp_error.UnknownJobType('Unknown job type: %s' % type)
         self.jobs[data['UUID']] = \
-            {'status' : ('waiting', 'Waiting to be processed'),
+            {'status' : (jobstatus.WAITING, 'Waiting to be processed'),
              'slaveId' : None,
              'data' : dataStr}
         self.addJob(version, suffix, dataStr)
