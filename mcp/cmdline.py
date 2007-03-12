@@ -20,6 +20,7 @@ from mint import data as mintdata
 
 from mcp import client
 from mcp import queue
+from mcp import jobstatus
 
 def main(envArgs = sys.argv[1:]):
     usage = "usage: %prog [options] trovespec"
@@ -137,22 +138,23 @@ def main(envArgs = sys.argv[1:]):
     mcpClient.submitJob(simplejson.dumps(buildData))
 
     status, statusMessage = None, None
-    while status not in ('built', 'finished', 'failed'):
+    while status < jobstatus.BUILT:
         try:
             newStatus, newStatusMessage = mcpClient.jobStatus(UUID)
         except Exception, e:
-            newStatus, newStatusMessage = 'error', e
-        if (newStatus != 'waiting') and (status == 'waiting'):
+            newStatus, newStatusMessage = jobstatus.ERROR, e
+        if (newStatus != jobstatus.WAITING) and (status == jobstatus.WAITING):
             timeStarted = time.time()
         if (newStatus != status) or (statusMessage != newStatusMessage):
             status, statusMessage = newStatus, newStatusMessage
-            print "%-79s\x0d" % ("%s: %s" % (status, statusMessage)),
+            print "%-79s\x0d" % ("%s: %s" % (jobstatus.statusName(status),
+                                             statusMessage)),
             sys.stdout.flush()
         else:
             time.sleep(1)
     print ""
 
-    if status == 'built':
+    if status == jobstatus.BUILT:
         timeBuilt = time.time()
         dataStr = outputQueue.read()
         data = simplejson.loads(dataStr)
@@ -163,6 +165,10 @@ def main(envArgs = sys.argv[1:]):
     timeFinished = time.time()
     mcpClient.disconnect()
     outputQueue.disconnect()
+
+    if not timeStarted:
+        # waiting interval was so short it was not even measured.
+        timeStarted = timeSubmitted
 
     print "Seconds waiting:", timeStarted - timeSubmitted
     if timeBuilt:
