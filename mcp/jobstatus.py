@@ -20,3 +20,6 @@ statuses = {
 sys.modules[__name__].__dict__.update(statuses)
 statusNames = dict([(statuses[x[0]], x[0].capitalize().replace('_', ' ')) \
                         for x in statuses.iteritems()])
+
+statusName = lambda status: [x[0] for x in statuses.iteritems() \
+                                 if x[1] == status][0].capitalize()
