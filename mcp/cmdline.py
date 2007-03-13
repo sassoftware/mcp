@@ -147,7 +147,7 @@ def main(envArgs = sys.argv[1:]):
             timeStarted = time.time()
         if (newStatus != status) or (statusMessage != newStatusMessage):
             status, statusMessage = newStatus, newStatusMessage
-            print "%-79s\x0d" % ("%s: %s" % (jobstatus.statusName(status),
+            print "%-79s\x0d" % ("%s: %s" % (jobstatus.statusNames[status],
                                              statusMessage)),
             sys.stdout.flush()
         else:
