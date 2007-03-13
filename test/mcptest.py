@@ -200,8 +200,8 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.commandQueue.incoming = [simplejson.dumps(data)]
         self.mcp.checkIncomingCommands()
 
-        assert self.mcp.responseTopic.outgoing
-        res = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert self.mcp.postQueue.outgoing
+        res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert res == [True, ['IllegalCommand', 'Unknown action: startJob']]
 
         # now test a legal command
@@ -209,8 +209,8 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.commandQueue.incoming = [simplejson.dumps(data)]
         self.mcp.checkIncomingCommands()
 
-        assert self.mcp.responseTopic.outgoing
-        res = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        assert self.mcp.postQueue.outgoing
+        res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
 
         assert res == [False, u'test.rpath.local:build-0']
 
@@ -223,13 +223,13 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.commandQueue.incoming = \
             [simplejson.dumps({'absolutely' : 'Wrong'})]
         self.mcp.checkIncomingCommands()
-        self.assertLogContent('no response address')
+        self.assertLogContent('no post address')
 
         self.mcp.commandQueue.incoming = \
             [simplejson.dumps({'absolutely' : 'Wrong', 'uuid' : 'bad'})]
         self.mcp.checkIncomingCommands()
 
-        assert simplejson.loads(self.mcp.responseTopic.outgoing.pop()) == \
+        assert simplejson.loads(self.mcp.postQueue.outgoing.pop()) == \
             [True, ['InternalServerError',
                     "An internal server error has occured"]]
 
@@ -262,14 +262,14 @@ class McpTest(mcp_helper.MCPTest):
         dataCommand = self.client.command.outgoing[0]
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.responseTopic.outgoing.pop()
+        res = self.mcp.postQueue.outgoing.pop()
 
         assert res == '[false, "test.rpath.local:build-0"]'
         assert self.mcp.commandQueue.incoming == []
 
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.responseTopic.outgoing.pop()
+        res = self.mcp.postQueue.outgoing.pop()
         assert res == '[true, ["JobConflict", "Job already in progress"]]'
 
     def testUnknownJob(self):
@@ -279,7 +279,7 @@ class McpTest(mcp_helper.MCPTest):
         dataCommand = self.client.command.outgoing[0]
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.responseTopic.outgoing.pop()
+        res = self.mcp.postQueue.outgoing.pop()
 
         assert res == '[true, ["UnknownJobType", "Unknown job type: random"]]'
 
@@ -290,7 +290,7 @@ class McpTest(mcp_helper.MCPTest):
         dataCommand = self.client.command.outgoing[0]
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.responseTopic.outgoing.pop()
+        res = self.mcp.postQueue.outgoing.pop()
 
         assert res == '[true, ["ProtocolError", "unable to parse job"]]'
 
@@ -380,11 +380,11 @@ class McpTest(mcp_helper.MCPTest):
 
     def testHandleComMissing(self):
         self.mcp.handleCommand({})
-        self.assertLogContent('no response address')
+        self.assertLogContent('no post address')
 
     def testHandleComProtocol(self):
         self.mcp.handleCommand({'protocolVersion' : 999999999999, 'uuid' : ''})
-        res = self.mcp.responseTopic.outgoing.pop()
+        res = self.mcp.postQueue.outgoing.pop()
         assert res == \
            '[true, ["ProtocolError", "Unknown Protocol Version: 999999999999"]]'
 
@@ -485,20 +485,20 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
                                 'action' : 'jobStatus',
                                 'jobId' : 'bad-job-id'})
-        res = self.mcp.responseTopic.outgoing.pop()
+        res = self.mcp.postQueue.outgoing.pop()
         assert res == '[true, ["UnknownJob", "Unknown job Id: bad-job-id"]]'
 
     def testMissingJobId(self):
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
                                 'action' : 'jobStatus'})
-        res = self.mcp.responseTopic.outgoing.pop()
+        res = self.mcp.postQueue.outgoing.pop()
         assert res == '[true, ["UnknownJob", "Unknown job Id: None"]]'
 
     def testClearCache(self):
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
                                 'action' : 'clearCache',
                                 'masterId' : 'testMaster'})
-        res = self.mcp.responseTopic.outgoing.pop()
+        res = self.mcp.postQueue.outgoing.pop()
 
         assert res == '[true, ["UnknownHost", "Unknown Host: testMaster"]]'
         self.mcp.getMaster('testMaster')
@@ -772,7 +772,7 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
                                 'action' : 'getJSVersion'})
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
 
         assert not err
         # this data comes from the test suite. overloaded getVersion
@@ -785,7 +785,7 @@ class McpTest(mcp_helper.MCPTest):
                                 'protocolVersion' : 1,
                                 'action' : 'slaveStatus'})
 
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert not err
         assert data == {}
 
@@ -798,7 +798,7 @@ class McpTest(mcp_helper.MCPTest):
                                 'action' : 'jobStatus',
                                 'jobId' : jobId})
 
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert not err
         assert data == ['running', '']
 
@@ -823,7 +823,7 @@ class McpTest(mcp_helper.MCPTest):
              '{"node": "master64", "action": "slaveLimit", "limit": 0, '
              '"protocolVersion": 1}']
 
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert not err
         assert data is None
 
@@ -835,7 +835,7 @@ class McpTest(mcp_helper.MCPTest):
                                 'action' : 'stopMaster',
                                 'masterId' : masterId,
                                 'delayed' : False})
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert err
         assert data == ['UnknownHost', 'Unknown Host: %s' % masterId]
 
@@ -848,7 +848,7 @@ class McpTest(mcp_helper.MCPTest):
                                 'action' : 'stopSlave',
                                 'slaveId' : slaveId,
                                 'delayed' : False})
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert err
         assert data == ['UnknownHost', 'Unknown Host: %s' % slaveId]
 
@@ -860,7 +860,7 @@ class McpTest(mcp_helper.MCPTest):
                                 'action' : 'stopJob',
                                 'jobId' : jobId})
 
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert err
         self.failIf(data != ['UnknownJob', 'Unknown Job ID: %s' % jobId],
                     "Job was not reported as unknown")
@@ -874,7 +874,7 @@ class McpTest(mcp_helper.MCPTest):
                                 'masterId' : masterId,
                                 'limit' : 1})
 
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert err
         self.failIf(data != ['UnknownHost', 'Unknown Host: %s' % masterId],
                     "Host was not reported as unknown")
@@ -889,7 +889,7 @@ class McpTest(mcp_helper.MCPTest):
                                 'slaveId' : slaveId,
                                 'TTL' : 500})
 
-        err, data = simplejson.loads(self.mcp.responseTopic.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert err
         self.failIf(data != ['UnknownHost', 'Unknown Host: %s' % slaveId],
                     "Host was not reported as unknown")

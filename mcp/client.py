@@ -27,15 +27,15 @@ class MCPClient(object):
         m.update(str(random.randint(0, 2 ** 128)))
         self.uuid = m.hexdigest()
         self.cfg = cfg
+        self.post = queue.Queue(cfg.queueHost, cfg.queuePort, self.uuid,
+                                    namespace = cfg.namespace, timeOut = None)
         self.command = queue.Queue(cfg.queueHost, cfg.queuePort,
                                    'command', namespace = cfg.namespace,
                                    autoSubscribe = False)
-        self.response = queue.Topic(cfg.queueHost, cfg.queuePort, self.uuid,
-                                    namespace = cfg.namespace, timeOut = None)
 
     def disconnect(self):
         self.command.disconnect()
-        self.response.disconnect()
+        self.post.disconnect()
 
     def _send(self, **data):
         data['uuid'] = self.uuid
@@ -48,7 +48,7 @@ class MCPClient(object):
         data['action'] = sys._getframe(1).f_code.co_name
 
         self.command.send(simplejson.dumps(data))
-        res = self.response.read()
+        res = self.post.read()
         if res:
             error, res = simplejson.loads(res)
             if error:
@@ -88,17 +88,3 @@ class MCPClient(object):
 
     def getJSVersion(self):
         return self._send()
-
-
-#if __name__ == '__main__':
-#    import bdb
-#    def run():
-#        cfg = MCPClientConfig()
-#        client = MCPClient(cfg)
-#        import epdb
-#        epdb.st()
-#        client.disconnect()
-#    try:
-#        run()
-#    except bdb.BdbQuit:
-#        pass

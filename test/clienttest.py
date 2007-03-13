@@ -16,7 +16,7 @@ import mcp_helper
 
 class ClientTest(mcp_helper.MCPTest):
     def queueResponse(self, res, error = False):
-        self.client.response.inbound.insert(0, simplejson.dumps((error, res)))
+        self.client.post.inbound.insert(0, simplejson.dumps((error, res)))
 
     def getCommand(self):
         if self.client.command.connection.sent:
@@ -35,8 +35,8 @@ class ClientTest(mcp_helper.MCPTest):
 
     def testBasicAttributes(self):
         assert self.client.command.connectionName == '/queue/test/command'
-        assert self.client.response.connectionName == \
-            '/topic/test/' + self.client.uuid
+        assert self.client.post.connectionName == \
+            '/queue/test/' + self.client.uuid
 
         res = self.client.slaveStatus()
         assert self.client.command.connection.sent[0][0] == \
@@ -52,8 +52,8 @@ class ClientTest(mcp_helper.MCPTest):
         command = simplejson.loads(self.client.command.connection.sent[0][1])
 
         assert command['data'] == build
-        assert self.client.response.connectionName == \
-            '/topic/test/' + command['uuid']
+        assert self.client.post.connectionName == \
+            '/queue/test/' + command['uuid']
 
         self.checkValue(command, 'action', 'submitJob')
         self.checkValue(command, 'protocolVersion', 1)
@@ -169,11 +169,11 @@ class ClientTest(mcp_helper.MCPTest):
             def disconnect(self):
                 self.connected = False
         mc.command = MockDisc()
-        mc.response = MockDisc()
+        mc.post = MockDisc()
         mc.disconnect()
 
         self.failIf(mc.command.connected, "Command Queue was not disconnected")
-        self.failIf(mc.response.connected,
+        self.failIf(mc.post.connected,
                     "Response Topic was not disconnected")
 
 

@@ -46,10 +46,10 @@ def commandResponse(func):
             print >> self.log, "command is not a dict: %s" % str(command)
             self.log.flush()
         elif 'uuid' not in command:
-            print >> self.log, "no response address: %s" % str(command)
+            print >> self.log, "no post address: %s" % str(command)
             self.log.flush()
         else:
-            self.responseTopic.send(command['uuid'], simplejson.dumps(res))
+            self.postQueue.send(command['uuid'], simplejson.dumps(res))
     return wrapper
 
 def logErrors(func):
@@ -91,12 +91,11 @@ class MCPServer(object):
         # response Topic will be used both ways. other units talking to mcp
         # will use the channel "response" and mcp responding to clients will
         # send messages to a specific UUID
-        self.responseTopic = queue.MultiplexedTopic(cfg.queueHost,
-                                                    cfg.queuePort,
-                                                    namespace = cfg.namespace,
-                                                    timeOut = 0)
-        self.responseTopic.addDest('response')
-        # the channel
+        self.responseTopic = queue.Topic(cfg.queueHost,
+                                         cfg.queuePort, 'response',
+                                         namespace = cfg.namespace,
+                                         timeOut = 0)
+
         self.postQueue = queue.MultiplexedQueue(cfg.queueHost, cfg.queuePort,
                                                 autoSubscribe = False,
                                                 timeOut = 0)

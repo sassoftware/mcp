@@ -41,11 +41,12 @@ class CmdlnTest(mcp_helper.MCPTest):
             self.statusIndex += 1
             if idx == 3:
                 raise AssertionError("to test a codepath")
-            return ('waiting',
-                    'starting',
-                    'running',
-                    'running',
-                    'running', 'built')[idx], ''
+            return (jobstatus.WAITING,
+                    jobstatus.STARTING,
+                    jobstatus.RUNNING,
+                    jobstatus.RUNNING,
+                    jobstatus.RUNNING,
+                    jobstatus.BUILT)[idx], ''
 
         def ignoreInput(*args, **kwargs):
             return False, None

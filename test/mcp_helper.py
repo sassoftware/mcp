@@ -140,7 +140,7 @@ class MCPTest(testhelp.TestCase):
         self.clientCfg = client.MCPClientConfig()
         self.clientCfg.namespace = 'test'
         self.client = client.MCPClient(self.clientCfg)
-        self.client.response.timeOut = 0
+        self.client.post.timeOut = 0
         self.buildCount = 0
 
         self.masterResponse = response.MCPResponse('master', self.clientCfg)
