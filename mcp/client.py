@@ -28,7 +28,7 @@ class MCPClient(object):
         self.uuid = m.hexdigest()
         self.cfg = cfg
         self.post = queue.Queue(cfg.queueHost, cfg.queuePort, self.uuid,
-                                    namespace = cfg.namespace, timeOut = None)
+                                    namespace = None, timeOut = None)
         self.command = queue.Queue(cfg.queueHost, cfg.queuePort,
                                    'command', namespace = cfg.namespace,
                                    autoSubscribe = False)

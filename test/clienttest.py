@@ -36,7 +36,7 @@ class ClientTest(mcp_helper.MCPTest):
     def testBasicAttributes(self):
         assert self.client.command.connectionName == '/queue/test/command'
         assert self.client.post.connectionName == \
-            '/queue/test/' + self.client.uuid
+            '/queue/' + self.client.uuid
 
         res = self.client.slaveStatus()
         assert self.client.command.connection.sent[0][0] == \
@@ -53,7 +53,7 @@ class ClientTest(mcp_helper.MCPTest):
 
         assert command['data'] == build
         assert self.client.post.connectionName == \
-            '/queue/test/' + command['uuid']
+            '/queue/' + command['uuid']
 
         self.checkValue(command, 'action', 'submitJob')
         self.checkValue(command, 'protocolVersion', 1)
