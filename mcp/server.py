@@ -142,8 +142,9 @@ class MCPServer(object):
         if count < limit:
             data = {}
             data['protocolVersion'] = PROTOCOL_VERSION
-            data['troveSpec'] = '%s=%s/%s' % (self.cfg.slaveTroveName,
-                                              self.cfg.slaveTroveLabel, version)
+            data['troveSpec'] = '%s=%s/%s[is: %s]' % (self.cfg.slaveTroveName,
+                                              self.cfg.slaveTroveLabel, version,
+                                                      suffix)
             print >> self.log, "demanding slave: %s on %s" % (data['troveSpec'], demandName)
             self.demand[demandName].send(simplejson.dumps(data))
             self.demandCounts[demand] = count + 1
