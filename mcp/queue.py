@@ -21,6 +21,8 @@ class Queue(object):
         self.timeOut = timeOut
         self.queueLimit = queueLimit
         self.autoSubscribe = autoSubscribe
+        self.host = host
+        self.port = port
 
         self.inbound = []
         self.connection = stomp.Connection(host, port)
@@ -41,10 +43,16 @@ class Queue(object):
         object.__setattr__(self, attr, val)
 
     def _subscribe(self):
+        if self.connection is None:
+            self.connection = stomp.Connection(self.host, self.port)
+            self.connection.addlistener(self)
+            self.connection.start()
         self.connection.subscribe(self.connectionName, ack='client')
 
     def _unsubscribe(self):
         self.connection.unsubscribe(self.connectionName)
+        self.connection.disconnect()
+        self.connection = None
 
     def receive(self, message):
         self.lock.acquire()
@@ -153,6 +161,10 @@ class MultiplexedQueue(Queue):
             self.lock.release()
 
     def _subscribe(self):
+        if self.connection is None:
+            self.connection = stomp.Connection(self.host, self.port)
+            self.connection.addlistener(self)
+            self.connection.start()
         self.lock.acquire()
         try:
             for dest in self.connectionNames:
@@ -167,6 +179,8 @@ class MultiplexedQueue(Queue):
                 self.connection.unsubscribe(dest)
         finally:
             self.lock.release()
+        self.connection.disconnect()
+        self.connection = None
 
     def send(self, dest, message):
         self.connection.send(self.connectionBase + '/' + dest, message)
