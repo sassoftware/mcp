@@ -124,38 +124,11 @@ class ThreadedMCP(server.MCPServer, threading.Thread):
         return nvf[0], versions.VersionFromString(nvf[1]), \
             (nvf[2] and nvf[2] or '')
 
-class MCPTest(testhelp.TestCase):
-    def setUp(self):
-        testhelp.TestCase.setUp(self)
-        self.basePath = tempfile.mkdtemp(prefix = 'mcp')
-        os.mkdir(os.path.join(self.basePath, 'log'))
-        self.cfg = self.getMCPConfig()
-        self.mcp = ThreadedMCP(self.cfg)
-        self.slaveId = 0
-
-        self.q = queue.Queue(self.cfg.queueHost, self.cfg.queuePort,
-                             'test', namespace = self.cfg.namespace)
-        self.q.timeOut = 0
-
-        self.clientCfg = client.MCPClientConfig()
-        self.clientCfg.namespace = 'test'
-        self.client = client.MCPClient(self.clientCfg)
-        self.client.post.timeOut = 0
-        self.buildCount = 0
-
-        self.masterResponse = response.MCPResponse('master', self.clientCfg)
-        self.slaveResponse = response.MCPResponse('master:slave',
-                                                  self.clientCfg)
-
-    def tearDown(self):
-        self.mcp.running = False
-        util.rmtree(self.cfg.basePath)
-        testhelp.TestCase.tearDown(self)
-
+class MCPTestMixin:
     def getMCPConfig(self):
         cfg = config.MCPConfig()
-        cfg.basePath = self.basePath
-        cfg.logPath = os.path.join(cfg.basePath, 'log')
+        cfg.basePath = self.mcpBasePath
+        cfg.logPath = os.path.join(self.mcpBasePath, 'log')
 
         cfg.queueHost = 'dummyhost'
         cfg.queuePort = 12345
@@ -164,6 +137,44 @@ class MCPTest(testhelp.TestCase):
         cfg.slaveTroveName = 'group-core'
         cfg.slaveTrpveLabel = 'conary.rpath.com@rpl:1'
         return cfg
+
+    def setUp(self):
+        self.mcpBasePath = tempfile.mkdtemp(prefix = 'mcp')
+        os.mkdir(os.path.join(self.mcpBasePath, 'log'))
+        self.mcpCfg = self.getMCPConfig()
+        self.mcp = ThreadedMCP(self.mcpCfg)
+        self.slaveId = 0
+
+        self.q = queue.Queue(self.mcpCfg.queueHost, self.mcpCfg.queuePort,
+                             'test', namespace = self.mcpCfg.namespace)
+        self.q.timeOut = 0
+
+        self.mcpClientCfg = client.MCPClientConfig()
+        self.mcpClientCfg.namespace = 'test'
+        self.mcpClient = client.MCPClient(self.mcpClientCfg)
+        self.mcpClient.post.timeOut = 0
+        self.buildCount = 0
+
+        self.masterResponse = response.MCPResponse('master', self.mcpClientCfg)
+        self.slaveResponse = response.MCPResponse('master:slave',
+                                                  self.mcpClientCfg)
+    def tearDown(self):
+        self.mcp.running = False
+        util.rmtree(self.mcpCfg.basePath)
+
+
+class MCPTest(testhelp.TestCase, MCPTestMixin):
+    def setUp(self):
+        testhelp.TestCase.setUp(self)
+        MCPTestMixin.setUp(self)
+
+        self.cfg = self.mcpCfg
+        self.clientCfg = self.mcpClientCfg
+        self.client = self.mcpClient
+
+    def tearDown(self):
+        testhelp.TestCase.tearDown(self)
+        MCPTestMixin.tearDown(self)
 
     def getJsonBuild(self, jsversion = '2.0.2', arch = 'x86'):
         buildDict = {}
