@@ -122,9 +122,7 @@ class MCPServer(object):
                 None, (self.cfg.slaveTroveName, l, None))
         except TroveNotFound:
             return []
-        if troves[0][2] is None:
-            troves[0][2] == ''
-        return troves[0]
+        return sorted(troves)[-1]
 
     def getTrailingRevision(self, version):
         NVF = self.getVersion(version)
