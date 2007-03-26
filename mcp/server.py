@@ -184,7 +184,7 @@ class MCPServer(object):
             suffix = getSuffix(data['troveFlavor'])
         elif type == 'cook':
             version = self.getTrailingRevision(version = '')
-            suffix = data['jobData']['arch']
+            suffix = data['data']['arch']
         else:
             raise mcp_error.UnknownJobType('Unknown job type: %s' % type)
         self.jobs[data['UUID']] = \
