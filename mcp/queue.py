@@ -123,6 +123,8 @@ class Queue(object):
 class MultiplexedQueue(Queue):
     def __init__(self, host, port, dest = [], namespace = '',
                  timeOut = 600, queueLimit = None, autoSubscribe = True):
+        self.host = host
+        self.port = port
         self.lock = threading.RLock()
         self.timeOut = timeOut
         self.queueLimit = queueLimit
