@@ -123,34 +123,13 @@ class QueueTest(mcp_helper.MCPTest):
 
     def testReadLimit(self):
         self.q.queueLimit = 1
-        self.q.connection.subscriptions = []
-        self.q.connection.unsubscriptions = []
+
+        assert self.q.connection
+
         self.q.connection.insertMessage('test')
-
-        assert self.q.connection.unsubscriptions == ['/queue/test/test']
-        assert self.q.connection.subscriptions == []
-
-        self.q.connection.unsubscriptions = []
-        assert self.q.read() == 'test'
-
-        assert self.q.connection.subscriptions == []
-        assert self.q.connection.unsubscriptions == []
-
+        self.failIf(self.q.connection, "Connection was not terminated")
         self.q.incrementLimit()
-        assert self.q.connection.subscriptions == ['/queue/test/test']
-
-    def testReadRejection(self):
-        self.q.queueLimit = 1
-
-        assert self.q.connection.acks == []
-
-        self.q.connection.insertMessage('test')
-        assert self.q.connection.acks == ['message-0']
-        self.q.connection.insertMessage('test')
-        assert self.q.connection.acks == ['message-0']
-        self.q.incrementLimit()
-        self.q.connection.insertMessage('test')
-        assert self.q.connection.acks == ['message-0', 'message-2']
+        self.failIf(not self.q.connection, "Connection was not created")
 
     def testReadAckLimits(self):
         self.q.queueLength = 1
@@ -184,39 +163,11 @@ class QueueTest(mcp_helper.MCPTest):
         q.addDest('test1')
         q.addDest('test2')
         q.queueLimit = 1
-        q.connection.subscriptions = []
-        q.connection.unsubscriptions = []
         q.connection.insertMessage('test')
-
-        assert q.connection.unsubscriptions == \
-            ['/queue/test/test1', '/queue/test/test2']
-        assert q.connection.subscriptions == []
-        assert q.connection.acks == ['message-0']
-
-        q.connection.unsubscriptions = []
-        assert q.read() == 'test'
-
-        assert q.connection.subscriptions == []
-        assert q.connection.unsubscriptions == []
-
+        self.failIf(q.connection, "Connection was not terminated at limit")
         q.incrementLimit()
-        assert q.connection.subscriptions == \
-            ['/queue/test/test1', '/queue/test/test2']
-
-    def testMultiplexedReadAcks(self):
-        q = queue.MultiplexedQueue('dummyhost', 12345, namespace = 'test')
-        q.addDest('test1')
-        q.addDest('test2')
-        q.queueLimit = 1
-        q.connection.subscriptions = []
-        q.connection.unsubscriptions = []
-        q.connection.insertMessage('test')
-        assert q.connection.acks == ['message-0']
-        q.connection.insertMessage('test')
-        assert q.connection.acks == ['message-0']
-        q.incrementLimit()
-        q.connection.insertMessage('test')
-        assert q.connection.acks == ['message-0', 'message-2']
+        self.failIf(not q.connection,
+                    "Connection was not created when limit was raised")
 
     def testMultiplexedSend(self):
         q = queue.MultiplexedQueue('dummyhost', 12345, namespace = 'test')

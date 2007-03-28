@@ -568,7 +568,7 @@ class McpTest(mcp_helper.MCPTest):
     def testDummyCook(self):
         self.mcp.handleJob(simplejson.dumps({'type': 'cook',
                                              'UUID': 'dummy-cook-47',
-                                             'jobData' : {'arch': 'x86'}}))
+                                             'data' : {'arch': 'x86'}}))
 
         self.failIf('dummy-cook-47' not in self.mcp.jobs,
                     "Cook job was not recorded")
