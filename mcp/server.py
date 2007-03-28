@@ -174,7 +174,8 @@ class MCPServer(object):
             raise mcp_error.ProtocolError('unable to parse job')
         UUID = data['UUID']
         if (not force) and (UUID in self.jobs) and \
-                (self.jobs[UUID]['status'][0] not in ('finished', 'failed')):
+                (self.jobs[UUID]['status'][0] not in (jobstatus.FINISHED,
+                                                      jobstatus.FAILED)):
             raise mcp_error.JobConflict
         type = data['type']
         version = ''
@@ -184,7 +185,7 @@ class MCPServer(object):
             suffix = getSuffix(data['troveFlavor'])
         elif type == 'cook':
             version = self.getTrailingRevision(version = '')
-            suffix = data['data']['arch']
+            suffix = getSuffix(data['data']['arch'])
         else:
             raise mcp_error.UnknownJobType('Unknown job type: %s' % type)
         self.jobs[data['UUID']] = \
@@ -314,8 +315,8 @@ class MCPServer(object):
         jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
         job = self.jobs.get(jobId, {})
         jobData = job.get('data', None)
-        if jobData and (job.get('status', ('', ''))[0] not in ('finished',
-                                                               'failed')):
+        if jobData and (job.get('status', ('', ''))[0] not in \
+                            (jobstatus.FINISHED, jobstatus.FAILED)):
             print >> self.log, "Respawning Job:", jobId
             self.log.flush()
             self.handleJob(jobData, force = True)
@@ -377,7 +378,7 @@ class MCPServer(object):
                 if node in self.jobMasters:
                     for slaveId in self.jobMasters[node]['slaves'][:]:
                         self.slaveOffline(slaveId)
-                del self.jobMasters[node]
+                    del self.jobMasters[node]
             elif event == 'masterStatus':
                 oldInfo = self.getMaster(node)
                 oldSlaves = oldInfo.get('slaves', [])
