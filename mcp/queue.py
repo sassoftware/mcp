@@ -117,7 +117,8 @@ class Queue(object):
         return None
 
     def disconnect(self):
-        self.connection.disconnect()
+        if self.connection:
+            self.connection.disconnect()
 
 class MultiplexedQueue(Queue):
     def __init__(self, host, port, dest = [], namespace = '',
