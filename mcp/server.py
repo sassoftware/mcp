@@ -255,13 +255,30 @@ class MCPServer(object):
                 return self.handleJob(data['data'])
             elif data['action'] == 'getJSVersion':
                 return self.getTrailingRevision(version = '').split('-')[0]
-            elif data['action'] == 'slaveStatus':
-                return self.jobMasters
+            elif data['action'] == 'nodeStatus':
+                # this casting protects the jobMasters data structure, since we
+                # will be modifying it. if the data must be changed radically,
+                # it might be worth exploring copy.deepcopy vs refactoring this
+                res = dict([(x[0], dict(x[1].iteritems())) \
+                                for x in self.jobMasters.iteritems()])
+                for data in res.values():
+                    data['slaves'] = dict([(x, self.jobSlaves.get(x)) \
+                                               for x in data['slaves']])
+                return res
             elif data['action'] == 'jobStatus':
                 jobId = data.get('jobId')
-                if jobId not in self.jobs:
+                if jobId and jobId not in self.jobs:
                     raise mcp_error.UnknownJob('Unknown job Id: %s' % jobId)
-                return self.jobs[data['jobId']]['status']
+                if jobId:
+                    return self.jobs[data['jobId']]['status']
+                else:
+                    # scrub the "data" element it's large and not related to
+                    # status
+                    res = dict([(x[0], dict([y for y in x[1].iteritems() \
+                                                     if y[0] != 'data'])) \
+                                    for x in self.jobs.iteritems()])
+
+                    return res
             elif data['action'] == 'stopMaster':
                 masterId = data['masterId']
                 if masterId not in self.jobMasters:
