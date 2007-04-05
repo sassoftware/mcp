@@ -38,7 +38,7 @@ class ClientTest(mcp_helper.MCPTest):
         assert self.client.post.connectionName == \
             '/queue/' + self.client.uuid
 
-        res = self.client.slaveStatus()
+        res = self.client.nodeStatus()
         assert self.client.command.connection.sent[0][0] == \
             '/queue/test/command'
 
@@ -60,11 +60,11 @@ class ClientTest(mcp_helper.MCPTest):
 
     def testSlaveStatus(self):
         self.queueResponse({})
-        res = self.client.slaveStatus()
+        res = self.client.nodeStatus()
         assert res == {}
 
         command = self.getCommand()
-        self.checkValue(command, 'action', 'slaveStatus')
+        self.checkValue(command, 'action', 'nodeStatus')
 
     def testStopJob(self):
         self.queueResponse(None)

@@ -492,7 +492,7 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
                                 'action' : 'jobStatus'})
         res = self.mcp.postQueue.outgoing.pop()
-        assert res == '[true, ["UnknownJob", "Unknown job Id: None"]]'
+        assert res == '[false, {}]'
 
     def testClearCache(self):
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
@@ -783,7 +783,7 @@ class McpTest(mcp_helper.MCPTest):
     def testCommandSlaveStatus(self):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
-                                'action' : 'slaveStatus'})
+                                'action' : 'nodeStatus'})
 
         err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert not err
