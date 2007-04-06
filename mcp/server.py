@@ -78,7 +78,7 @@ class MCPServer(object):
 
         self.cfg = cfg
         if cfg.logPath:
-            self.log = open(os.path.join(cfg.logPath, 'mcp.log'), 'a+')
+            self.log = open(os.path.join(cfg.logPath, 'mcp.log'), 'a')
         else:
             self.log = sys.stderr
         # command queue is for sending commands *to* the mcp
@@ -163,6 +163,9 @@ class MCPServer(object):
         queueName = 'job' + type
         if queueName not in self.jobQueues:
             self.addJobQueue(version, suffix)
+        UUID = simplejson.loads(data)['UUID']
+        print >> self.log, 'Placing %s on %s' % (UUID, queueName)
+        self.log.flush()
         self.jobQueues[queueName].send(data)
         count = self.jobCounts.get(type, 0) + 1
         self.jobCounts[type] = count
@@ -402,6 +405,10 @@ class MCPServer(object):
                 for slaveId in [x for x in oldSlaves \
                                     if x not in data['slaves']]:
                     self.slaveOffline(slaveId)
+                # ensure we record each slave. useful when we just started up
+                # and don't know of the slave yet.
+                for slaveId in data['slaves']:
+                    self.getSlave(slaveId)
                 for key in 'arch', 'slaves', 'limit':
                     if key in data:
                         oldInfo[key] = data[key]
