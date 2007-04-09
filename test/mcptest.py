@@ -514,7 +514,7 @@ class McpTest(mcp_helper.MCPTest):
         assert not self.mcp.logFiles
         self.mcp.logJob('dummy-build-26', 'test message')
         assert self.mcp.logFiles
-        assert 'dummy-build-26' in self.mcp.logFiles
+        self.failUnless('dummy-build-26' in self.mcp.logFiles)
         self.mcp.logFiles['dummy-build-26'].close()
 
         logPath = self.mcp.cfg.logPath
@@ -522,8 +522,8 @@ class McpTest(mcp_helper.MCPTest):
             self.mcp.cfg.logPath = None
             out, err = self.captureOutput(self.mcp.logJob,
                                          'dummy-build-26', 'test message')
-            assert out == 'dummy-build-26: test message\n'
-            assert err == ''
+            self.failUnlessEqual(out, 'dummy-build-26: test message\n')
+            self.failUnlessEqual(err, '')
         finally:
             self.mcp.cfg.logPath = logPath
 
