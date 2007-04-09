@@ -12,6 +12,8 @@ import simplejson
 from conary import conaryclient
 from conary.errors import TroveNotFound
 from conary.deps import deps
+import logging
+log = logging
 
 from mcp import queue
 from mcp import mcp_error
@@ -37,17 +39,14 @@ def commandResponse(func):
         except Exception, e:
             if e.__class__.__name__ not in mcp_error.__dict__:
                 exc, e, bt = sys.exc_info()
-                print >> self.log, e.__class__.__name__, str(e)
-                print >> self.log, '\n'.join(traceback.format_tb(bt))
-                self.log.flush()
+                log.error(e.__class__.__name__, str(e))
+                log.error('\n'.join(traceback.format_tb(bt)))
                 e = mcp_error.InternalServerError()
             res = True, (e.__class__.__name__, str(e))
         if type(command) != dict:
-            print >> self.log, "command is not a dict: %s" % str(command)
-            self.log.flush()
+            log.error("command is not a dict: %s" % str(command))
         elif 'uuid' not in command:
-            print >> self.log, "no post address: %s" % str(command)
-            self.log.flush()
+            log.error("no post address: %s" % str(command))
         else:
             self.postQueue.send(command['uuid'], simplejson.dumps(res))
     return wrapper
@@ -58,10 +57,9 @@ def logErrors(func):
             func(self, *args, **kwargs)
         except:
             exc, e, bt = sys.exc_info()
-            print >> self.log, "Response Exception: (" + \
-                e.__class__.__name__ + ')', str(e)
-            print >> self.log, '\n'.join(traceback.format_tb(bt))
-            self.log.flush()
+            log.error("Response Exception: (" + \
+                e.__class__.__name__ + ')', str(e))
+            log.error('\n'.join(traceback.format_tb(bt)))
     return wrapper
 
 class MCPServer(object):
@@ -78,9 +76,10 @@ class MCPServer(object):
 
         self.cfg = cfg
         if cfg.logPath:
-            self.log = open(os.path.join(cfg.logPath, 'mcp.log'), 'a')
-        else:
-            self.log = sys.stderr
+            logging.basicConfig(level=logging.DEBUG,
+                    format='%(asctime)s %(levelname)s %(message)s',
+                    filename= os.path.join(cfg.logPath, 'mcp.log'),
+                    filemode='a')
         # command queue is for sending commands *to* the mcp
         self.commandQueue = queue.Queue(cfg.queueHost, cfg.queuePort, 'command',
                                         namespace = cfg.namespace, timeOut = 0)
@@ -143,7 +142,7 @@ class MCPServer(object):
             data['troveSpec'] = '%s=%s/%s[is: %s]' % (self.cfg.slaveTroveName,
                                               self.cfg.slaveTroveLabel, version,
                                                       suffix)
-            print >> self.log, "demanding slave: %s on %s" % (data['troveSpec'], demandName)
+            log.debug("demanding slave: %s on %s" % (data['troveSpec'], demandName))
             self.demand[demandName].send(simplejson.dumps(data))
             self.demandCounts[demand] = count + 1
             return True
@@ -164,8 +163,7 @@ class MCPServer(object):
         if queueName not in self.jobQueues:
             self.addJobQueue(version, suffix)
         UUID = simplejson.loads(data)['UUID']
-        print >> self.log, 'Placing %s on %s' % (UUID, queueName)
-        self.log.flush()
+        log.info('Placing %s on %s' % (UUID, queueName))
         self.jobQueues[queueName].send(data)
         count = self.jobCounts.get(type, 0) + 1
         self.jobCounts[type] = count
@@ -254,6 +252,8 @@ class MCPServer(object):
     @commandResponse
     def handleCommand(self, data):
         if data.get('protocolVersion') == 1:
+            log.info("Incoming command '%s'" % data['action'])
+            log.debug("Payload: %s" % repr(data))
             if data['action'] == 'submitJob':
                 return self.handleJob(data['data'])
             elif data['action'] == 'getJSVersion':
@@ -273,15 +273,14 @@ class MCPServer(object):
                 if jobId and jobId not in self.jobs:
                     raise mcp_error.UnknownJob('Unknown job Id: %s' % jobId)
                 if jobId:
-                    return self.jobs[data['jobId']]['status']
+                    r = self.jobs[jobId]['status']
                 else:
                     # scrub the "data" element it's large and not related to
                     # status
-                    res = dict([(x[0], dict([y for y in x[1].iteritems() \
+                    r = dict([(x[0], dict([y for y in x[1].iteritems() \
                                                      if y[0] != 'data'])) \
                                     for x in self.jobs.iteritems()])
-
-                    return res
+                return r
             elif data['action'] == 'stopMaster':
                 masterId = data['masterId']
                 if masterId not in self.jobMasters:
@@ -314,9 +313,7 @@ class MCPServer(object):
             try:
                 data = simplejson.loads(dataStr)
             except Exception, e:
-                print >> self.log, "JSON Error decoding command %s: %s\n%s" % \
-                    (e.__class__.__name__, str(e), dataStr)
-                self.log.flush()
+                log.error("JSON Error decoding command %s: %s\n%s" % (e.__class__.__name__, str(e), dataStr))
             else:
                 self.handleCommand(data)
             dataStr = self.commandQueue.read()
@@ -337,8 +334,7 @@ class MCPServer(object):
         jobData = job.get('data', None)
         if jobData and (job.get('status', ('', ''))[0] not in \
                             (jobstatus.FINISHED, jobstatus.FAILED)):
-            print >> self.log, "Respawning Job:", jobId
-            self.log.flush()
+            log.info("Respawning Job: %s" % jobId)
             self.handleJob(jobData, force = True)
 
     def slaveOffline(self, slaveId):
@@ -349,7 +345,7 @@ class MCPServer(object):
             type = self.jobSlaves[slaveId]['type']
             count = self.jobSlaveCounts.get(type, 0)
             count = max(count - 1, 0)
-            print >> self.log, "Setting slave count of type: %s to %d" % (type, count)
+            log.info("Setting slave count of type: %s to %d" % (type, count))
             self.jobSlaveCounts[type] = count
             del self.jobSlaves[slaveId]
         if slaveId in self.getMaster(masterId)['slaves']:
@@ -394,6 +390,8 @@ class MCPServer(object):
         if data['protocolVersion'] == 1:
             node = data['node']
             event = data['event']
+            log.info("Handling response event '%s' from node '%s'" % (event, node))
+            log.debug("Payload: %s" % repr(data))
             if event == 'masterOffline':
                 if node in self.jobMasters:
                     for slaveId in self.jobMasters[node]['slaves'][:]:
@@ -462,6 +460,7 @@ class MCPServer(object):
                         del self.logFiles[jobId]
                 self.jobs[jobId]['status'] = (data['status'],
                                               data['statusMessage'])
+
             elif event == 'postJobOutput':
                 self.postQueue.send(data['dest'],
                                     simplejson.dumps({'uuid': data['jobId'],
@@ -510,6 +509,7 @@ def main():
     cfg = config.MCPConfig()
     cfg.read(os.path.join(os.path.sep, 'srv', 'rbuilder', 'mcp', 'config'))
     mcpServer = MCPServer(cfg)
+    log.info("MCP server starting")
     mcpServer.run()
 
 def runDaemon():
