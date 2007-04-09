@@ -714,9 +714,9 @@ class McpTest(mcp_helper.MCPTest):
                                  'urls' : ['http://fake/1', 'test image'],
                                  'dest' : 'fake'})
 
-        assert self.mcp.postQueue.outgoing == \
+        self.failUnlessEqual(self.mcp.postQueue.outgoing,
             ['{"uuid": "dummy-build-32", ' \
-                 '"urls": ["http://fake/1", "test image"]}']
+                 '"urls": ["http:\\/\\/fake\\/1", "test image"]}'])
 
     def testBadResponseProtocol(self):
         jobId = 'dummy-build-54'
