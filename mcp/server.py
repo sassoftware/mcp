@@ -252,7 +252,10 @@ class MCPServer(object):
     @commandResponse
     def handleCommand(self, data):
         if data.get('protocolVersion') == 1:
-            log.info("Incoming command '%s'" % data['action'])
+            if data['action'] != 'jobStatus':
+                log.info("Incoming command '%s'" % data['action'])
+            else:
+                log.debug("Incoming command '%s'" % data['action'])
             log.debug("Payload: %s" % repr(data))
             if data['action'] == 'submitJob':
                 return self.handleJob(data['data'])
