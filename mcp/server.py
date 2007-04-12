@@ -171,8 +171,8 @@ class MCPServer(object):
     def handleJob(self, dataStr, force = False):
         try:
             data = simplejson.loads(dataStr)
-        except:
-            raise mcp_error.ProtocolError('unable to parse job')
+        except Exception, e:
+            raise mcp_error.ProtocolError('unable to parse job: %s' % str(e))
         UUID = data['UUID']
         if (not force) and (UUID in self.jobs) and \
                 (self.jobs[UUID]['status'][0] not in (jobstatus.FINISHED,
