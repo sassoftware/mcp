@@ -57,7 +57,8 @@ def logErrors(func):
             func(self, *args, **kwargs)
         except:
             exc, e, bt = sys.exc_info()
-            log.error("Response Exception: (%s) %s" % (e.__class__.__name__, str(e)))
+            log.error("%s %s" % ("Response Exception: (" + \
+                e.__class__.__name__ + ')', str(e)))
             log.error('\n'.join(traceback.format_tb(bt)))
     return wrapper
 
@@ -97,6 +98,13 @@ class MCPServer(object):
         self.postQueue = queue.MultiplexedQueue(cfg.queueHost, cfg.queuePort,
                                                 autoSubscribe = False,
                                                 timeOut = 0)
+
+        # job specific control topic will be a separate avenue to send control
+        # messages to whichever jobslave is currently serving a given job.
+        # message format will be identical to controlTopic messages
+        self.jobControlQueue = queue.MultiplexedQueue( \
+            cfg.queueHost, cfg.queuePort, namespace = cfg.namespace,
+            autoSubscribe = False)
 
     def logJob(self, jobId, message):
         message = '\n'.join([x for x in message.splitlines() if x])
@@ -235,10 +243,12 @@ class MCPServer(object):
             # is included in the control packet to ensure a race condition can't
             # kill the wrong job.
             control = {'protocolVersion' : PROTOCOL_VERSION,
-                       'node' : slaveId,
+                       'node' : 'slaves',
                        'action' : 'stopJob',
                        'jobId' : jobId}
-            self.controlTopic.send(simplejson.dumps(control))
+            # send kill message to job specific control queue, due to the fact
+            # that the job may not be active when the stop command is sent.
+            self.jobControlQueue.send(jobId, simplejson.dumps(control))
 
     def clearCache(self, masterId):
         if masterId not in self.jobMasters:
@@ -500,6 +510,7 @@ class MCPServer(object):
         self.commandQueue.disconnect()
         self.responseTopic.disconnect()
         self.controlTopic.disconnect()
+        self.jobControlQueue.disconnect()
         for name in self.demand:
                 self.demand[name].disconnect()
         for name in self.jobQueues:
