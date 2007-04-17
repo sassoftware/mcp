@@ -363,8 +363,8 @@ class McpTest(mcp_helper.MCPTest):
                                             'status' : 'running',
                                             'slaveId' : 'master:slave'}}
         self.mcp.stopJob('test.rpath.local:build-22')
-        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
-        self.checkValue(control, 'node', 'master:slave')
+        control = simplejson.loads(self.mcp.jobControlQueue.outgoing.pop())
+        self.checkValue(control, 'node', 'slaves')
         self.checkValue(control, 'action', 'stopJob')
         self.checkValue(control, 'jobId', 'test.rpath.local:build-22')
 
@@ -567,16 +567,14 @@ class McpTest(mcp_helper.MCPTest):
 
     def testLogErrors(self):
         class Foo(object):
-            def __init__(self):
-                self.log = StringIO.StringIO()
             @server.logErrors
             def crash(self):
                 raise AssertionError, 'Purposely raised'
 
         f = Foo()
         f.crash()
-        data = f.log.getvalue()
-        assert 'Purposely raise' in data
+
+        self.assertLogContent('Purposely raised')
 
     def testDisconnect(self):
         class MockDisc(object):
@@ -706,9 +704,9 @@ class McpTest(mcp_helper.MCPTest):
                                  'urls' : ['http://fake/1', 'test image'],
                                  'dest' : 'fake'})
 
-        self.failUnlessEqual(self.mcp.postQueue.outgoing,
-            ['{"uuid": "dummy-build-32", ' \
-                 '"urls": ["http:\\/\\/fake\\/1", "test image"]}'])
+        data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        self.failUnlessEqual(data, {'uuid': 'dummy-build-32',
+                                    'urls': ['http://fake/1', 'test image']})
 
     def testBadResponseProtocol(self):
         jobId = 'dummy-build-54'
@@ -716,12 +714,7 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.handleResponse({'node' : slaveId,
                                  'protocolVersion' : 999999})
 
-        f = open(os.path.join(self.mcp.cfg.logPath, 'mcp.log'))
-        data = f.read()
-        f.close()
-
-        self.failIf('Unknown Protocol Version: 999999' not in data,
-                    "Protocol Error fort bad version was not logged")
+        self.assertLogContent('Unknown Protocol Version: 999999')
 
     def testMasterOffline(self):
         masterId = 'testmaster'
