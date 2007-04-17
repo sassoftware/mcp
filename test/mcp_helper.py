@@ -173,6 +173,9 @@ class MCPTest(testhelp.TestCase, MCPTestMixin):
         self.client = self.mcpClient
 
     def tearDown(self):
+        import logging
+        for x in logging._handlers:
+            logging.getLogger().removeHandler(x)
         testhelp.TestCase.tearDown(self)
         MCPTestMixin.tearDown(self)
 
