@@ -238,14 +238,6 @@ class McpTest(mcp_helper.MCPTest):
 
         self.assertLogContent('No JSON object could be decoded')
 
-    def testLogFallback(self):
-        from mcp import config
-        cfg = config.MCPConfig()
-        cfg.logPath = None
-        mcp = server.MCPServer(cfg)
-        mcp.log == sys.stderr
-
-
     def testDemandReturnCode(self):
         res = self.mcp.demandJobSlave('1.0.1-1-1', 'x86_64')
         assert res
@@ -292,7 +284,7 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.checkIncomingCommands()
         res = self.mcp.postQueue.outgoing.pop()
 
-        assert res == '[true, ["ProtocolError", "unable to parse job"]]'
+        self.failUnlessEqual(res, '[true, ["ProtocolError", "unable to parse job: expected string or buffer"]]')
 
     def testSetSlaveTTL(self):
         self.mcp.jobSlaves = {'master:slave' : {'status' : 'running',
