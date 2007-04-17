@@ -39,7 +39,7 @@ def commandResponse(func):
         except Exception, e:
             if e.__class__.__name__ not in mcp_error.__dict__:
                 exc, e, bt = sys.exc_info()
-                log.error(e.__class__.__name__, str(e))
+                log.error(e.__class__.__name__ + ": " + str(e))
                 log.error('\n'.join(traceback.format_tb(bt)))
                 e = mcp_error.InternalServerError()
             res = True, (e.__class__.__name__, str(e))
@@ -57,8 +57,7 @@ def logErrors(func):
             func(self, *args, **kwargs)
         except:
             exc, e, bt = sys.exc_info()
-            log.error("Response Exception: (" + \
-                e.__class__.__name__ + ')', str(e))
+            log.error("Response Exception: (%s) %s" % (e.__class__.__name__, str(e)))
             log.error('\n'.join(traceback.format_tb(bt)))
     return wrapper
 
