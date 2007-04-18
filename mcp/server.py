@@ -87,9 +87,8 @@ class MCPServer(object):
         self.controlTopic = queue.Topic(cfg.queueHost, cfg.queuePort, 'control',
                                         namespace = cfg.namespace,
                                         autoSubscribe = False)
-        # response Topic will be used both ways. other units talking to mcp
-        # will use the channel "response" and mcp responding to clients will
-        # send messages to a specific UUID
+
+        # response Topic will be used by other nodes talking to mcp
         self.responseTopic = queue.Topic(cfg.queueHost,
                                          cfg.queuePort, 'response',
                                          namespace = cfg.namespace,
