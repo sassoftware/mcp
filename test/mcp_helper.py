@@ -34,7 +34,8 @@ class DummyConnection(object):
             listener.receive(message)
 
     def subscribe(self, dest, ack = 'auto'):
-        assert ack == 'client', 'Queue will not be able to refuse a message'
+        if dest.startswith('/queue/'):
+            assert ack == 'client', 'Queue will not be able to refuse a message'
         self.subscriptions.insert(0, dest)
 
     def unsubscribe(self, dest):
