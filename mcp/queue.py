@@ -9,11 +9,15 @@ import stomp
 #           a timeOut of zero simply polls the queue once and returns.
 #           a timeOut of None blocks forever.
 # type: one of 'queue' or 'topic'
-# queueLimit: control un/re-subscription as queue fills up. a queueLimit on None
+# queueLimit: control un/re-subscription as queue fills up. a queueLimit of None
 #           disables this feature.
+# autoSubscribe: subscribe to a queue immediately or not. this is generally used
+#           if you want to send on a queue only, but never listen.
+# namespace: an extension of queue names. eg: /topic/_namespace_/topic_name
 
 class Queue(object):
     type = 'queue'
+    ack = 'client'
 
     def __init__(self, host, port, dest, namespace = '', timeOut = 600,
                  queueLimit = None, autoSubscribe = True):
@@ -47,7 +51,7 @@ class Queue(object):
             self.connection = stomp.Connection(self.host, self.port)
             self.connection.addlistener(self)
             self.connection.start()
-        self.connection.subscribe(self.connectionName, ack='client')
+        self.connection.subscribe(self.connectionName, ack = self.ack)
 
     def _unsubscribe(self):
         self.connection.unsubscribe(self.connectionName)
@@ -64,7 +68,8 @@ class Queue(object):
                 messageLine = [x for x in message.split('\n') \
                                    if x.strip().startswith('message-id')][0]
                 messageId = messageLine[messageLine.index(':') + 1:].strip()
-                self.connection.ack(messageId)
+                if self.ack == 'client':
+                    self.connection.ack(messageId)
                 # ack before unsubscribe, or race condition ensues
                 if self.limitedQueue:
                     self.queueLimit = max(self.queueLimit - 1, 0)
@@ -151,7 +156,7 @@ class MultiplexedQueue(Queue):
         finally:
             self.lock.release()
         if self.autoSubscribe:
-            self.connection.subscribe(dest, ack = 'client')
+            self.connection.subscribe(dest, ack = self.ack)
 
     def delDest(self, dest):
         dest = self.connectionBase + '/' + dest
@@ -171,7 +176,7 @@ class MultiplexedQueue(Queue):
         self.lock.acquire()
         try:
             for dest in self.connectionNames:
-                self.connection.subscribe(dest, ack = 'client')
+                self.connection.subscribe(dest, ack = self.ack)
         finally:
             self.lock.release()
 
@@ -190,6 +195,8 @@ class MultiplexedQueue(Queue):
 
 class Topic(Queue):
     type = 'topic'
+    ack = 'auto'
 
 class MultiplexedTopic(MultiplexedQueue):
     type = 'topic'
+    ack = 'auto'
