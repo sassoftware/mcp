@@ -103,7 +103,7 @@ def isIndividual():
     return _individual
 
 
-EXCLUDED_PATHS = ['test']
+EXCLUDED_PATHS = ['test', 'setup.py']
 
 def main(argv=None, individual=True):
     import testhelp

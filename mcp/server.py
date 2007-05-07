@@ -525,7 +525,6 @@ def main():
     mcpServer.run()
 
 def runDaemon():
-    return main()
     pidFile = os.path.join(os.path.sep, 'var', 'run', 'mcp.pid')
     if os.path.exists(pidFile):
         f = open(pidFile)
