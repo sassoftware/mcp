@@ -5,6 +5,7 @@
 #
 
 import os, sys
+import pprint
 import time
 import threading
 import simplejson
@@ -23,6 +24,8 @@ from mcp import slavestatus
 import traceback
 
 PROTOCOL_VERSION = 1
+
+dumpEvery = 10
 
 def getSuffix(frozenFlavor):
     flavors = ('x86_64', 'x86')
@@ -496,13 +499,27 @@ class MCPServer(object):
         self.requestMasterStatus()
         self.requestSlaveStatus()
         try:
+            lastDump = time.time()
             while self.running:
                 self.checkIncomingCommands()
                 self.checkResponses()
                 self.checkJobLoad()
                 time.sleep(0.1)
+                if time.time() > (lastDump + dumpEvery):
+                    self.dump()
+                    lastDump = time.time()
         finally:
             self.disconnect()
+
+    def dump(self):
+        log.debug("demandCounts: %s" % pprint.pformat(self.demandCounts))
+        log.debug("jobCounts: %s" % pprint.pformat(self.jobCounts))
+        log.debug("jobQueues: %s" % pprint.pformat(self.jobQueues))
+        log.debug("demand: %s" % pprint.pformat(self.demand))
+        log.debug("jobSlaveCounts: %s" % pprint.pformat(self.jobSlaveCounts))
+        log.debug("jobSlaves: %s" % pprint.pformat(self.jobSlaves))
+        log.debug("jobs: %s" % pprint.pformat(self.jobs))
+        log.debug("jobMasters: %s" % pprint.pformat(self.jobMasters))
 
     def disconnect(self):
         self.running = False
