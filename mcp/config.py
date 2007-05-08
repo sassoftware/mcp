@@ -18,4 +18,4 @@ class MCPConfig(conarycfg.ConfigFile):
     namespace = 'mcp'
 
     slaveTroveName = 'group-jobslave'
-    slaveTroveLabel = 'products.rpath.com@rpath:js-1'
+    slaveTroveLabel = 'products.rpath.com@rpath:js'
