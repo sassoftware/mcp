@@ -11,6 +11,7 @@ import threading
 import simplejson
 
 from conary import conaryclient
+from conary import conarycfg
 from conary.errors import TroveNotFound
 from conary.deps import deps
 import logging
@@ -122,7 +123,8 @@ class MCPServer(object):
             print jobId + ':', message
 
     def getVersion(self, version):
-        cc = conaryclient.ConaryClient()
+        cfg = conarycfg.ConaryConfiguration(True)
+        cc = conaryclient.ConaryClient(cfg)
         try:
             l = version and (self.cfg.slaveTroveLabel + '/' + version) \
                 or self.cfg.slaveTroveLabel
