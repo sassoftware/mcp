@@ -521,19 +521,21 @@ class McpTest(mcp_helper.MCPTest):
 
     def testGetVersion(self):
         # mock out the conaryclient object to catch the repos call
-        class MockClient(object):
+        ConaryClient = conaryclient.ConaryClient
+        class MockClient(ConaryClient):
             class MockRepos(object):
                 def findTrove(self, *args, **kwargs):
                     print args, kwargs
                     return (('dummy', 'version', None),)
-            repos = MockRepos()
+            def __init__(self, *args, **kw):
+                ConaryClient.__init__(self, *args, **kw)
+                self.repos = self.MockRepos()
 
-        ConaryClient = conaryclient.ConaryClient
         try:
             conaryclient.ConaryClient = MockClient
             out, err = \
                 self.captureOutput(server.MCPServer.getVersion, self.mcp, '')
-            refOut = "(None, ('group-core', 'products.rpath.com@rpath:js-1', " \
+            refOut = "(None, ('group-core', 'products.rpath.com@rpath:js', " \
                 "None)) {}\n"
             self.failIf(out != refOut, "findTrove expected: %s but got: %s" % \
                             (refOut, out))
