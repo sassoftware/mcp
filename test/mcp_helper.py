@@ -205,27 +205,3 @@ class MCPTest(testhelp.TestCase, MCPTestMixin):
         data = f.read()
         f.close()
         assert content in data
-
-    def captureOutput(self, func, *args, **kwargs):
-        # note this function returns stdout and stderr in main memory
-        # not appropriate for extremely large output
-        oldErr = os.dup(sys.stderr.fileno())
-        oldOut = os.dup(sys.stdout.fileno())
-        outFd, outFn = tempfile.mkstemp()
-        errFd, errFn = tempfile.mkstemp()
-        os.dup2(errFd, sys.stderr.fileno())
-        os.dup2(outFd, sys.stdout.fileno())
-        os.close(outFd)
-        os.close(errFd)
-        try:
-            func(*args, **kwargs)
-        finally:
-            os.dup2(oldErr, sys.stderr.fileno())
-            os.dup2(oldOut, sys.stdout.fileno())
-        outF = open(outFn)
-        out = outF.read()
-        outF.close()
-        errF = open(errFn)
-        err = errF.read()
-        errF.close()
-        return out, err

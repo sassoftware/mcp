@@ -512,10 +512,9 @@ class McpTest(mcp_helper.MCPTest):
         logPath = self.mcp.cfg.logPath
         try:
             self.mcp.cfg.logPath = None
-            out, err = self.captureOutput(self.mcp.logJob,
-                                         'dummy-build-26', 'test message')
-            self.failUnlessEqual(out, 'dummy-build-26: test message\n')
-            self.failUnlessEqual(err, '')
+            ret, output = self.captureOutput(self.mcp.logJob,
+                                             'dummy-build-26', 'test message')
+            self.failUnlessEqual(output, 'dummy-build-26: test message\n')
         finally:
             self.mcp.cfg.logPath = logPath
 
@@ -533,12 +532,11 @@ class McpTest(mcp_helper.MCPTest):
 
         try:
             conaryclient.ConaryClient = MockClient
-            out, err = \
+            ret, output = \
                 self.captureOutput(server.MCPServer.getVersion, self.mcp, '')
             refOut = "(None, ('group-core', 'products.rpath.com@rpath:js', " \
                 "None)) {}\n"
-            self.failIf(out != refOut, "findTrove expected: %s but got: %s" % \
-                            (refOut, out))
+            self.failUnlessEqual(output, refOut)
         finally:
             conaryclient.ConaryClient = ConaryClient
 
