@@ -71,7 +71,7 @@ class CmdlnTest(mcp_helper.MCPTest):
             client.MCPClient.getJSVersion = dummyVersion
             queue.Queue.read = dummyRead
             conaryclient.ConaryClient = MockClient
-            out, err = self.captureOutput(cmdline.main, envArgs)
+            rc, output = self.captureOutput(cmdline.main, envArgs)
         finally:
             conaryclient.ConaryClient = ConaryClient
             client.MCPClient.jobStatus = jobStatus
@@ -80,7 +80,7 @@ class CmdlnTest(mcp_helper.MCPTest):
             client.MCPClient.getJSVersion = getJSVersion
             queue.Queue.read = read
 
-            self.failIf('Total' not in out, "cmdline did not reach last stage")
+            self.failIf('Total' not in output, "cmdline did not reach last stage")
 
 if __name__ == "__main__":
     testsuite.main()
