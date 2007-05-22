@@ -542,11 +542,14 @@ class McpTest(mcp_helper.MCPTest):
 
 
     def testGetMissingVersion(self):
-        class MockClient(object):
+        ConaryClient = conaryclient.ConaryClient
+        class MockClient(ConaryClient):
             class MockRepos(object):
                 def findTrove(self, *args, **kwargs):
                     raise TroveNotFound('Dummy Call')
-            repos = MockRepos()
+            def __init__(self, *args, **kw):
+                ConaryClient.__init__(self, *args, **kw)
+                self.repos = self.MockRepos()
 
         ConaryClient = conaryclient.ConaryClient
         try:
