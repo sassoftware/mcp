@@ -512,48 +512,44 @@ class McpTest(mcp_helper.MCPTest):
         logPath = self.mcp.cfg.logPath
         try:
             self.mcp.cfg.logPath = None
-            out, err = self.captureOutput(self.mcp.logJob,
-                                         'dummy-build-26', 'test message')
-            self.failUnlessEqual(out, 'dummy-build-26: test message\n')
-            self.failUnlessEqual(err, '')
+            ret, output = self.captureOutput(self.mcp.logJob,
+                                             'dummy-build-26', 'test message')
+            self.failUnlessEqual(output, 'dummy-build-26: test message\n')
         finally:
             self.mcp.cfg.logPath = logPath
 
     def testGetVersion(self):
         # mock out the conaryclient object to catch the repos call
-        class MockClient(object):
+        ConaryClient = conaryclient.ConaryClient
+        class MockClient(ConaryClient):
             class MockRepos(object):
                 def findTrove(self, *args, **kwargs):
                     print args, kwargs
                     return (('dummy', 'version', None),)
-            repos = MockRepos()
+            def __init__(self, *args, **kw):
+                ConaryClient.__init__(self, *args, **kw)
+                self.repos = self.MockRepos()
 
-            def __init__(self, cfg):
-                pass
-        
-
-        ConaryClient = conaryclient.ConaryClient
         try:
             conaryclient.ConaryClient = MockClient
-            out, err = \
+            ret, output = \
                 self.captureOutput(server.MCPServer.getVersion, self.mcp, '')
             refOut = "(None, ('group-core', 'products.rpath.com@rpath:js', " \
                 "None)) {}\n"
-            self.failIf(out != refOut, "findTrove expected: %s but got: %s" % \
-                            (refOut, out))
+            self.failUnlessEqual(output, refOut)
         finally:
             conaryclient.ConaryClient = ConaryClient
 
 
     def testGetMissingVersion(self):
-        class MockClient(object):
+        ConaryClient = conaryclient.ConaryClient
+        class MockClient(ConaryClient):
             class MockRepos(object):
                 def findTrove(self, *args, **kwargs):
                     raise TroveNotFound('Dummy Call')
-            repos = MockRepos()
-
-            def __init__(self, cfg):
-                pass
+            def __init__(self, *args, **kw):
+                ConaryClient.__init__(self, *args, **kw)
+                self.repos = self.MockRepos()
 
         ConaryClient = conaryclient.ConaryClient
         try:
