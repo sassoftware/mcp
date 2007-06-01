@@ -252,7 +252,7 @@ class MCPServer(object):
                        'jobId' : jobId}
             # send kill message to job specific control queue, due to the fact
             # that the job may not be active when the stop command is sent.
-            self.jobControlQueue.send(jobId, simplejson.dumps(control))
+            self.jobControlQueue.send(slaveId, simplejson.dumps(control))
 
     def clearCache(self, masterId):
         if masterId not in self.jobMasters:

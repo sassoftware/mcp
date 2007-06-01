@@ -530,6 +530,10 @@ class McpTest(mcp_helper.MCPTest):
                 ConaryClient.__init__(self, *args, **kw)
                 self.repos = self.MockRepos()
 
+            def __init__(self, cfg):
+                pass
+
+        ConaryClient = conaryclient.ConaryClient
         try:
             conaryclient.ConaryClient = MockClient
             ret, output = \
@@ -550,6 +554,9 @@ class McpTest(mcp_helper.MCPTest):
             def __init__(self, *args, **kw):
                 ConaryClient.__init__(self, *args, **kw)
                 self.repos = self.MockRepos()
+
+            def __init__(self, cfg):
+                pass
 
         ConaryClient = conaryclient.ConaryClient
         try:
