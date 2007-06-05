@@ -238,21 +238,27 @@ class MCPServer(object):
                    'limit' : limit}
         self.controlTopic.send(simplejson.dumps(control))
 
-    def stopJob(self, jobId):
+    def stopJob(self, jobId, useQueue = True):
         if jobId not in self.jobs:
             raise mcp_error.UnknownJob('Unknown Job ID: %s' % jobId)
         slaveId = self.jobs[jobId]['slaveId']
+        control = {'protocolVersion' : PROTOCOL_VERSION,
+                   'node' : 'slaves',
+                   'action' : 'stopJob',
+                   'jobId' : jobId}
         if slaveId:
             # the slave only has one job running at a time, but the jobId
             # is included in the control packet to ensure a race condition can't
             # kill the wrong job.
-            control = {'protocolVersion' : PROTOCOL_VERSION,
-                       'node' : 'slaves',
-                       'action' : 'stopJob',
-                       'jobId' : jobId}
-            # send kill message to job specific control queue, due to the fact
-            # that the job may not be active when the stop command is sent.
-            self.jobControlQueue.send(slaveId, simplejson.dumps(control))
+            if useQueue:
+                # send kill message to job specific control queue, due to the
+                # fact that the job may not be active when the stop command is
+                # sent.
+                self.jobControlQueue.send(slaveId, simplejson.dumps(control))
+                return
+        # fallback. used if no slave is known, or if we weren't supposed to
+        # use a queue.
+        self.controlTopic.send(simplejson.dumps(control))
 
     def clearCache(self, masterId):
         if masterId not in self.jobMasters:
@@ -310,6 +316,8 @@ class MCPServer(object):
                 self.stopSlave(data['slaveId'], data['delayed'])
             elif data['action'] == 'stopJob':
                 self.stopJob(data['jobId'])
+            elif data['action'] == 'ackJob':
+                self.stopJob(data['jobId'], useQueue = False)
             elif data['action'] == 'setSlaveLimit':
                 self.setSlaveLimit(data['masterId'], data['limit'])
             elif data['action'] == 'setSlaveTTL':
