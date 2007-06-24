@@ -26,6 +26,7 @@ import traceback
 
 PROTOCOL_VERSION = 1
 
+LOG_LEVEL = logging.INFO
 dumpEvery = 10
 
 def getSuffix(frozenFlavor):
@@ -80,7 +81,7 @@ class MCPServer(object):
 
         self.cfg = cfg
         if cfg.logPath:
-            logging.basicConfig(level=logging.DEBUG,
+            logging.basicConfig(level=LOG_LEVEL,
                     format='%(asctime)s %(levelname)s %(message)s',
                     filename= os.path.join(cfg.logPath, 'mcp.log'),
                     filemode='a')
