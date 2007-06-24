@@ -687,6 +687,36 @@ class McpTest(mcp_helper.MCPTest):
         self.failIf(self.mcp.jobSlaves[slaveId]['jobId'] != None,
                     "slave was not disassociated with it's job upon completion")
 
+    def testCommandAckJob(self):
+        masterId = 'master'
+        slaveId = masterId + ':slave03'
+
+        jobId = 'dummy-build-23'
+
+        self.mcp.jobs = {jobId : {'status' : (jobstatus.RUNNING, ''),
+                                  'data' : None,
+                                  'slaveId': slaveId}}
+
+        self.mcp.jobSlaves = {slaveId: {'status' : slavestatus.ACTIVE,
+                                        'type': '3.0.0-1-1:x86',
+                                        'jobId' : jobId}}
+
+
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'ackJob',
+                                'jobId': jobId})
+
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+
+        self.failIf(err, "unexpected error returned from mcp %s" % data)
+
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
+
+        self.checkValue(control, 'node', 'slaves')
+        self.checkValue(control, 'action', 'stopJob')
+        self.checkValue(control, 'jobId', jobId)
+
     def testJobLog(self):
         jobId = 'dummy-build-96'
         slaveId = 'master:slave'
