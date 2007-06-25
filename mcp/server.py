@@ -120,6 +120,7 @@ class MCPServer(object):
                         jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
             logFile = self.logFiles[jobId]
             logFile.write(message)
+            logFile.flush()
         else:
             print jobId + ':', message
 
@@ -415,7 +416,7 @@ class MCPServer(object):
         if data['protocolVersion'] == 1:
             node = data['node']
             event = data['event']
-            log.info("Handling response event '%s' from node '%s'" % (event, node))
+            log.debug("Handling response event '%s' from node '%s'" % (event, node))
             log.debug("Payload: %s" % repr(data))
             if event == 'masterOffline':
                 if node in self.jobMasters:
