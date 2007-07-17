@@ -119,7 +119,7 @@ class MCPServer(object):
                         self.cfg.logPath,
                         jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
             logFile = self.logFiles[jobId]
-            logFile.write(message)
+            logFile.write(message + '\n')
             logFile.flush()
         else:
             print jobId + ':', message
