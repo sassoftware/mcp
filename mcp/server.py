@@ -140,7 +140,7 @@ class MCPServer(object):
         NVF = self.getVersion(version)
         return NVF and str(NVF[1].trailingRevision()) or ''
 
-    def demandJobSlave(self, version, suffix, limit = 1):
+    def demandJobSlave(self, version, suffix):
         demand = '%s:%s' % (version, suffix)
         demandName = 'demand:%s' % suffix
         if demandName not in self.demand:
@@ -149,18 +149,14 @@ class MCPServer(object):
                             demandName, namespace = self.cfg.namespace,
                             autoSubscribe = False)
         count = self.demandCounts.get(demand, 0)
-        if count < limit:
-            data = {}
-            data['protocolVersion'] = PROTOCOL_VERSION
-            data['troveSpec'] = '%s=%s/%s[is: %s]' % (self.cfg.slaveTroveName,
-                                              self.cfg.slaveTroveLabel, version,
-                                                      suffix)
-            log.debug("demanding slave: %s on %s" % (data['troveSpec'], demandName))
-            self.demand[demandName].send(simplejson.dumps(data))
-            self.demandCounts[demand] = count + 1
-            return True
-        else:
-            return False
+        data = {}
+        data['protocolVersion'] = PROTOCOL_VERSION
+        data['troveSpec'] = '%s=%s/%s[is: %s]' % (self.cfg.slaveTroveName,
+                                          self.cfg.slaveTroveLabel, version,
+                                                  suffix)
+        log.debug("demanding slave: %s on %s" % (data['troveSpec'], demandName))
+        self.demand[demandName].send(simplejson.dumps(data))
+        self.demandCounts[demand] = count + 1
 
     def addJobQueue(self, version, suffix):
         jobName = 'job%s:%s' % (version, suffix)
