@@ -116,7 +116,7 @@ class MCPServer(object):
             if jobId not in self.logFiles:
                 self.logFiles[jobId] = \
                     open(os.path.join( \
-                        self.cfg.logPath,
+                        self.cfg.logPath, 'jobs',
                         jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
             logFile = self.logFiles[jobId]
             logFile.write(message + '\n')
