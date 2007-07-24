@@ -142,6 +142,7 @@ class MCPTestMixin:
     def setUp(self):
         self.mcpBasePath = tempfile.mkdtemp(prefix = 'mcp')
         os.mkdir(os.path.join(self.mcpBasePath, 'log'))
+        os.mkdir(os.path.join(self.mcpBasePath, 'log', 'jobs'))
         self.mcpCfg = self.getMCPConfig()
         self.mcp = ThreadedMCP(self.mcpCfg)
         self.slaveId = 0

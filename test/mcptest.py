@@ -240,13 +240,12 @@ class McpTest(mcp_helper.MCPTest):
 
     def testDemandReturnCode(self):
         res = self.mcp.demandJobSlave('1.0.1-1-1', 'x86_64')
-        assert res
         assert len(self.mcp.demand['demand:x86_64'].outgoing) == 1
         demanded = self.mcp.demand['demand:x86_64'].outgoing[0]
         assert '1.0.1-1-1' in demanded
         res = self.mcp.demandJobSlave('1.0.1-1-1', 'x86_64')
         assert not res
-        assert len(self.mcp.demand['demand:x86_64'].outgoing) == 1
+        assert len(self.mcp.demand['demand:x86_64'].outgoing) == 2
 
     def testJobConflict(self):
         build = self.getJsonBuild()
@@ -421,8 +420,8 @@ class McpTest(mcp_helper.MCPTest):
         assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 1}
 
         self.mcp.checkJobLoad()
-        assert len(self.mcp.demand['demand:x86'].outgoing) == 1
-        assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 1}
+        assert len(self.mcp.demand['demand:x86'].outgoing) == 2
+        assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 2}
 
 
     def testJobLoad2(self):
