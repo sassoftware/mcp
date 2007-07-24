@@ -318,8 +318,6 @@ class MCPServer(object):
                 self.stopSlave(data['slaveId'], data['delayed'])
             elif data['action'] == 'stopJob':
                 self.stopJob(data['jobId'])
-            elif data['action'] == 'ackJob':
-                self.stopJob(data['jobId'], useQueue = False)
             elif data['action'] == 'setSlaveLimit':
                 self.setSlaveLimit(data['masterId'], data['limit'])
             elif data['action'] == 'setSlaveTTL':

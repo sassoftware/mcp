@@ -65,9 +65,6 @@ class MCPClient(object):
     def stopJob(self, jobId):
         return self._send(jobId = jobId)
 
-    def ackJob(self, jobId):
-        return self._send(jobId = jobId)
-
     def jobStatus(self, jobId = None):
         return self._send(jobId = jobId)
 
