@@ -164,7 +164,6 @@ class MCPServer(object):
                                          self.cfg.queuePort, jobName,
                                          namespace = self.cfg.namespace,
                                          autoSubscribe = False)
-        self.demandJobSlave(version, suffix)
 
     def addJob(self, version, suffix, data):
         type = '%s:%s' % (version, suffix)
@@ -176,6 +175,7 @@ class MCPServer(object):
         self.jobQueues[queueName].send(data)
         count = self.jobCounts.get(type, 0) + 1
         self.jobCounts[type] = count
+        self.demandJobSlave(version, suffix)
 
     def handleJob(self, dataStr, force = False):
         try:
@@ -338,16 +338,6 @@ class MCPServer(object):
                 self.handleCommand(data)
             dataStr = self.commandQueue.read()
 
-    def checkJobLoad(self):
-        # generator is to prevent None from being split, which can happen
-        # if we stumble on a new job slave
-        for job in [x for x in self.jobCounts if x]:
-            version, suffix = job.split(':')
-            jobCount = self.jobCounts.get(job, 0)
-            slaveCount = self.jobSlaveCounts.get(job, 0)
-            if jobCount > slaveCount:
-                self.demandJobSlave(version, suffix)
-
     def respawnJob(self, slaveId):
         jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
         job = self.jobs.get(jobId, {})
@@ -509,7 +499,6 @@ class MCPServer(object):
             while self.running:
                 self.checkIncomingCommands()
                 self.checkResponses()
-                self.checkJobLoad()
                 time.sleep(0.1)
                 if time.time() > (lastDump + dumpEvery):
                     self.dump()

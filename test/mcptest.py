@@ -135,6 +135,19 @@ class McpTest(mcp_helper.MCPTest):
         assert '2.0.2' in nvf[1]
         assert not dataStr.endswith('[None]')
 
+    def testDemandPerJob(self):
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+
+        assert 'demand:x86' in self.mcp.demand
+
+        assert len(self.mcp.demand['demand:x86'].outgoing) == 1, \
+                "demand for jobslave did not enter queue"
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        assert len(self.mcp.demand['demand:x86'].outgoing) == 2, \
+                "demand for second jobslave did not enter queue"
+
     def testJobSlaveCountUp(self):
         assert self.mcp.jobSlaves == {}
         buildData = self.getJsonBuild()
@@ -411,31 +424,6 @@ class McpTest(mcp_helper.MCPTest):
         res = self.mcp.postQueue.outgoing.pop()
         assert res == \
            '[true, ["ProtocolError", "Unknown Protocol Version: 999999999999"]]'
-
-    def testJobLoad(self):
-        self.mcp.jobCounts['1.2.3-4-5:x86'] = 2
-
-        self.mcp.checkJobLoad()
-        assert '1.2.3-4-5' in self.mcp.demand['demand:x86'].outgoing[0]
-        assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 1}
-
-        self.mcp.checkJobLoad()
-        assert len(self.mcp.demand['demand:x86'].outgoing) == 2
-        assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 2}
-
-
-    def testJobLoad2(self):
-        self.mcp.jobCounts['1.2.3-4-5:x86'] = 2
-        self.mcp.jobSlaveCounts['1.2.3-4-5:x86'] = 2
-
-        self.mcp.checkJobLoad()
-        'demand:x86' not in self.mcp.demand
-        assert self.mcp.demandCounts.get('1.2.3-4-5:x86', 0) == 0
-
-        self.mcp.jobCounts['1.2.3-4-5:x86'] += 1
-        self.mcp.checkJobLoad()
-        assert len(self.mcp.demand['demand:x86'].outgoing) == 1
-        assert self.mcp.demandCounts == {'1.2.3-4-5:x86': 1}
 
     def testRespawn(self):
         build = self.getJsonBuild()
