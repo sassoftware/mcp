@@ -529,14 +529,15 @@ class MCPServer(object):
         self.postQueue.disconnect()
 
 
-def main():
-    cfg = config.MCPConfig()
-    cfg.read(os.path.join(os.path.sep, 'srv', 'rbuilder', 'mcp', 'config'))
+def main(cfg):
     mcpServer = MCPServer(cfg)
     log.info("MCP server starting")
     mcpServer.run()
 
 def runDaemon():
+    cfg = config.MCPConfig()
+    cfg.read(os.path.join(os.path.sep, 'srv', 'rbuilder', 'mcp', 'config'))
+
     pidFile = os.path.join(os.path.sep, 'var', 'run', 'mcp.pid')
     if os.path.exists(pidFile):
         f = open(pidFile)
@@ -569,5 +570,5 @@ def runDaemon():
             f = open(pidFile, 'w')
             f.write(str(os.getpid()))
             f.close()
-            main()
+            main(cfg)
             os.unlink(pidFile)
