@@ -827,6 +827,92 @@ class McpTest(mcp_helper.MCPTest):
         finally:
             time.sleep = sleep
 
+    def testWaitingJobNumber(self):
+        jobId = 'test.rpath.local:build-0'
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.failIf(self.mcp.waitingJobs != [jobId],
+                "Job was not put into waitingJobs on submission")
+        self.client.jobStatus(jobId)
+        self.mcp.commandQueue.incoming = self.client.command.outgoing
+        self.client.command.outgoing = []
+        self.mcp.postQueue.outgoing = []
+        self.mcp.checkIncomingCommands()
+        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        self.failIf(error, "unexpected error checking jobStatus: %s" % res)
+        status, statusMessage = res
+        self.failIf(status != jobstatus.WAITING,
+                "Expected status %d, but got %d" % (jobstatus.WAITING, status))
+        self.failIf(statusMessage != "Next in line for processing",
+                'Status message does not reflect place in line')
+
+    def testWaitingJobNumber2(self):
+        jobId = 'test.rpath.local:build-1'
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.client.jobStatus(jobId)
+        self.mcp.commandQueue.incoming = self.client.command.outgoing
+        self.client.command.outgoing = []
+        self.mcp.postQueue.outgoing = []
+        self.mcp.checkIncomingCommands()
+        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        self.failIf(error, "unexpected error checking jobStatus: %s" % res)
+        status, statusMessage = res
+        self.failIf(status != jobstatus.WAITING,
+                "Expected status %d, but got %d" % (jobstatus.WAITING, status))
+        self.failIf(statusMessage != "Number 2 in line for processing",
+                'Status message does not reflect place in line')
+
+    def testWaitingJobDecrement(self):
+        jobId0 = 'test.rpath.local:build-0'
+        jobId1 = 'test.rpath.local:build-1'
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.slaveResponse.jobStatus(jobId0, jobstatus.RUNNING, "starting")
+        self.mcp.responseTopic.incoming.insert( \
+                    0, self.slaveResponse.response.outgoing.pop())
+        self.mcp.checkResponses()
+        self.client.jobStatus(jobId1)
+        self.mcp.commandQueue.incoming = self.client.command.outgoing
+        self.client.command.outgoing = []
+        self.mcp.postQueue.outgoing = []
+        self.mcp.checkIncomingCommands()
+        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        self.failIf(error, "unexpected error checking jobStatus: %s" % res)
+        status, statusMessage = res
+        self.failIf(status != jobstatus.WAITING,
+                "Expected status %d, but got %d" % (jobstatus.WAITING, status))
+        self.failIf(statusMessage != "Next in line for processing",
+                'Status message does not reflect place in line')
+
+    def testWaitingJobMasking(self):
+        jobId0 = 'test.rpath.local:build-0'
+        jobId1 = 'test.rpath.local:build-1'
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.slaveResponse.jobStatus(jobId0, jobstatus.RUNNING, "starting")
+        self.mcp.responseTopic.incoming.insert( \
+                    0, self.slaveResponse.response.outgoing.pop())
+        self.mcp.checkResponses()
+        self.client.jobStatus(jobId0)
+        self.mcp.commandQueue.incoming = self.client.command.outgoing
+        self.client.command.outgoing = []
+        self.mcp.postQueue.outgoing = []
+        self.mcp.checkIncomingCommands()
+        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        self.failIf(error, "unexpected error checking jobStatus: %s" % res)
+        status, statusMessage = res
+        self.failIf(status != jobstatus.RUNNING,
+                "Expected status %d, but got %d" % (jobstatus.RUNNING, status))
+        self.failIf(statusMessage != "starting",
+                'Status message was masked by waiting logic')
+
 
 if __name__ == "__main__":
     testsuite.main()

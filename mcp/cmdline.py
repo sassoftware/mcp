@@ -75,7 +75,7 @@ def main(envArgs = sys.argv[1:]):
                          (', '.join(buildtypes.validBuildTypes)))
 
     buildData = {}
-    buildData['serialVersion'] = 1
+    buildData['protocolVersion'] = 1
 
     cfg = conarycfg.ConaryConfiguration(True)
     cfg.initializeFlavors()

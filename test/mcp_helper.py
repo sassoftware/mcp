@@ -183,7 +183,7 @@ class MCPTest(testhelp.TestCase, MCPTestMixin):
 
     def getJsonBuild(self, jsversion = '2.0.2', arch = 'x86'):
         buildDict = {}
-        buildDict['serialVersion'] = 1
+        buildDict['protocolVersion'] = 1
         buildDict['type'] = 'build'
         buildDict['UUID'] = 'test.rpath.local:build-%d' % self.buildCount
         self.buildCount += 1
