@@ -467,7 +467,7 @@ class MCPServer(object):
         log.debug("jobSlaves: %s" % pprint.pformat(self.jobSlaves))
         log.debug("jobs: %s" % pprint.pformat(self.jobs))
         log.debug("jobMasters: %s" % pprint.pformat(self.jobMasters))
-        log.debug("waitingJobs: %s" % self.pformat(self.waitingJobs))
+        log.debug("waitingJobs: %s" % pprint.pformat(self.waitingJobs))
 
     def disconnect(self):
         self.running = False
