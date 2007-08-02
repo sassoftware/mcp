@@ -77,9 +77,6 @@ class MCPClient(object):
     def stopMaster(self, masterId, delayed = True):
         return self._send(masterId = masterId, delayed = delayed)
 
-    def setSlaveTTL(self, slaveId, TTL):
-        return self._send(slaveId = slaveId, TTL = TTL)
-
     def setSlaveLimit(self, masterId, limit):
         return self._send(masterId = masterId, limit = limit)
 

@@ -110,14 +110,6 @@ class ClientTest(mcp_helper.MCPTest):
         command = self.getCommand()
         self.checkValue(command, 'delayed', False)
 
-    def testSetSlaveTTL(self):
-        self.queueResponse(None)
-        self.client.setSlaveTTL('dummy-slaveId', 60)
-        command = self.getCommand()
-        self.checkValue(command, 'action', 'setSlaveTTL')
-        self.checkValue(command, 'slaveId', 'dummy-slaveId')
-        self.checkValue(command, 'TTL', 60)
-
     def testSetSlaveLimit(self):
         self.queueResponse(None)
         self.client.setSlaveLimit('dummy-masterId', 3)

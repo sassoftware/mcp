@@ -69,11 +69,8 @@ def logErrors(func):
 
 class MCPServer(object):
     def __init__(self, cfg):
-        self.demandCounts = {}
-        self.jobCounts = {}
+        self.waitingJobs = []
         self.jobQueues = {}
-        self.demand = {}
-        self.jobSlaveCounts = {}
         self.jobSlaves = {}
         self.jobs = {}
         self.jobMasters = {}
@@ -140,42 +137,26 @@ class MCPServer(object):
         NVF = self.getVersion(version)
         return NVF and str(NVF[1].trailingRevision()) or ''
 
-    def demandJobSlave(self, version, suffix):
-        demand = '%s:%s' % (version, suffix)
-        demandName = 'demand:%s' % suffix
-        if demandName not in self.demand:
-            self.demand[demandName] = \
-                queue.Queue(self.cfg.queueHost, self.cfg.queuePort,
-                            demandName, namespace = self.cfg.namespace,
-                            autoSubscribe = False)
-        count = self.demandCounts.get(demand, 0)
-        data = {}
-        data['protocolVersion'] = PROTOCOL_VERSION
-        data['troveSpec'] = '%s=%s/%s[is: %s]' % (self.cfg.slaveTroveName,
-                                          self.cfg.slaveTroveLabel, version,
-                                                  suffix)
-        log.debug("demanding slave: %s on %s" % (data['troveSpec'], demandName))
-        self.demand[demandName].send(simplejson.dumps(data))
-        self.demandCounts[demand] = count + 1
-
-    def addJobQueue(self, version, suffix):
-        jobName = 'job%s:%s' % (version, suffix)
+    def addJobQueue(self, suffix):
+        jobName = 'job:%s' % suffix
         self.jobQueues[jobName] = queue.Queue(self.cfg.queueHost,
                                          self.cfg.queuePort, jobName,
                                          namespace = self.cfg.namespace,
                                          autoSubscribe = False)
 
-    def addJob(self, version, suffix, data):
-        type = '%s:%s' % (version, suffix)
-        queueName = 'job' + type
+    def addJob(self, version, suffix, dataStr):
+        queueName = 'job:%s' % suffix
         if queueName not in self.jobQueues:
-            self.addJobQueue(version, suffix)
-        UUID = simplejson.loads(data)['UUID']
+            self.addJobQueue(suffix)
+        data = simplejson.loads(dataStr)
+        UUID = data['UUID']
         log.info('Placing %s on %s' % (UUID, queueName))
-        self.jobQueues[queueName].send(data)
-        count = self.jobCounts.get(type, 0) + 1
-        self.jobCounts[type] = count
-        self.demandJobSlave(version, suffix)
+        data['jobSlaveNVF'] = '%s=%s/%s[is: %s]' % (self.cfg.slaveTroveName,
+                                          self.cfg.slaveTroveLabel, version,
+                                                  suffix)
+        dataStr = simplejson.dumps(data)
+        self.jobQueues[queueName].send(dataStr)
+        self.waitingJobs.append(UUID)
 
     def handleJob(self, dataStr, force = False):
         try:
@@ -205,27 +186,15 @@ class MCPServer(object):
         self.addJob(version, suffix, dataStr)
         return data['UUID']
 
-    def setSlaveTTL(self, slaveId, TTL):
+    def stopSlave(self, slaveId):
         if slaveId not in self.jobSlaves:
             raise mcp_error.UnknownHost("Unknown Host: %s" % slaveId)
+        # slave Id is masterId:slaveId so splitting on : gives masterId
         control = {'protocolVersion' : PROTOCOL_VERSION,
-                   'node' : slaveId,
-                   'action' : 'setTTL',
-                   'TTL' : TTL}
+                   'node' : slaveId.split(':')[0],
+                   'action' : 'stopSlave',
+                   'slaveId' : slaveId}
         self.controlTopic.send(simplejson.dumps(control))
-
-    def stopSlave(self, slaveId, delayed):
-        if slaveId not in self.jobSlaves:
-            raise mcp_error.UnknownHost("Unknown Host: %s" % slaveId)
-        if delayed:
-            self.setSlaveTTL(slaveId, 0)
-        else:
-            # slave Id is masterId:slaveId so splitting on : gives masterId
-            control = {'protocolVersion' : PROTOCOL_VERSION,
-                       'node' : slaveId.split(':')[0],
-                       'action' : 'stopSlave',
-                       'slaveId' : slaveId}
-            self.controlTopic.send(simplejson.dumps(control))
 
     def setSlaveLimit(self, masterId, limit):
         if masterId not in self.jobMasters:
@@ -237,6 +206,7 @@ class MCPServer(object):
         self.controlTopic.send(simplejson.dumps(control))
 
     def stopJob(self, jobId, useQueue = True):
+        # FIXME: the extra logic in here to protect against corner cases is likely crufty
         if jobId not in self.jobs:
             raise mcp_error.UnknownJob('Unknown Job ID: %s' % jobId)
         slaveId = self.jobs[jobId]['slaveId']
@@ -308,16 +278,15 @@ class MCPServer(object):
                 # grab slaves list first to ensure operation is atomic
                 slaves = self.jobMasters[data['masterId']]['slaves']
                 self.setSlaveLimit(masterId, 0)
-                for slaveId in slaves:
-                    self.stopSlave(slaveId, data['delayed'])
+                if not data['delayed']:
+                    for slaveId in slaves:
+                        self.stopSlave(slaveId)
             elif data['action'] == 'stopSlave':
-                self.stopSlave(data['slaveId'], data['delayed'])
+                self.stopSlave(data['slaveId'])
             elif data['action'] == 'stopJob':
                 self.stopJob(data['jobId'])
             elif data['action'] == 'setSlaveLimit':
                 self.setSlaveLimit(data['masterId'], data['limit'])
-            elif data['action'] == 'setSlaveTTL':
-                self.setSlaveTTL(data.get('slaveId'), data['TTL'])
             elif data['action'] == 'clearCache':
                 self.clearCache(data['masterId'])
             else:
@@ -352,11 +321,6 @@ class MCPServer(object):
         self.respawnJob(slaveId)
         masterId = slaveId.split(':')[0]
         if slaveId in self.jobSlaves:
-            type = self.jobSlaves[slaveId]['type']
-            count = self.jobSlaveCounts.get(type, 0)
-            count = max(count - 1, 0)
-            log.info("Setting slave count of type: %s to %d" % (type, count))
-            self.jobSlaveCounts[type] = count
             del self.jobSlaves[slaveId]
         if slaveId in self.getMaster(masterId)['slaves']:
             self.jobMasters[masterId]['slaves'].remove(slaveId)
@@ -433,14 +397,8 @@ class MCPServer(object):
                     if slaveId not in master['slaves']:
                         master['slaves'].append(slaveId)
                     if data['status'] == slavestatus.BUILDING:
-                        # remove it from the demand queue
-                        count = self.demandCounts.get(data['type'], 0)
-                        count = max(count - 1, 0)
-                        self.demandCounts[data['type']] = count
-                        # add it to job slaves immediately to prevent race
-                        # conditions
-                        count = self.jobSlaveCounts.get(data['type'], 0)
-                        self.jobSlaveCounts[data['type']] = count + 1
+                        #FIXME: add logic for removing from waitingJobs
+                        pass
                 else:
                     self.slaveOffline(slaveId)
             elif event == 'jobStatus':
@@ -454,11 +412,8 @@ class MCPServer(object):
                      'data' : 'jobData' in data and data['jobData'] or None})
                 if data['status'] == jobstatus.RUNNING:
                     if not firstSeen:
-                        # only tweak the job count if we knew of a job. useful
-                        # for graceful recovery.
-                        count = self.jobCounts.get(slave['type'], 0)
-                        count = max(count - 1, 0)
-                        self.jobCounts[slave['type']] = count
+                        # FIXME: ensure no waiting impact
+                        pass
                     self.jobSlaves[node]['jobId'] = jobId
                     self.jobs[jobId]['slaveId'] = node
                     self.jobSlaves[node]['status'] = slavestatus.ACTIVE
@@ -507,14 +462,11 @@ class MCPServer(object):
             self.disconnect()
 
     def dump(self):
-        log.debug("demandCounts: %s" % pprint.pformat(self.demandCounts))
-        log.debug("jobCounts: %s" % pprint.pformat(self.jobCounts))
         log.debug("jobQueues: %s" % pprint.pformat(self.jobQueues))
-        log.debug("demand: %s" % pprint.pformat(self.demand))
-        log.debug("jobSlaveCounts: %s" % pprint.pformat(self.jobSlaveCounts))
         log.debug("jobSlaves: %s" % pprint.pformat(self.jobSlaves))
         log.debug("jobs: %s" % pprint.pformat(self.jobs))
         log.debug("jobMasters: %s" % pprint.pformat(self.jobMasters))
+        log.debug("waitingJobs: %s" % self.pformat(self.waitingJobs))
 
     def disconnect(self):
         self.running = False
@@ -522,8 +474,6 @@ class MCPServer(object):
         self.responseTopic.disconnect()
         self.controlTopic.disconnect()
         self.jobControlQueue.disconnect()
-        for name in self.demand:
-                self.demand[name].disconnect()
         for name in self.jobQueues:
             self.jobQueues[name].disconnect()
         self.postQueue.disconnect()

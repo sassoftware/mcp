@@ -60,13 +60,13 @@ class ResponseTest(mcp_helper.MCPTest):
         self.checkValue(resp, 'status', slavestatus.ACTIVE)
 
     def testMasterStatus(self):
-         self.masterResponse.masterStatus('x86', 2, [])
-         resp = self.getMasterResponse()
-         self.checkValue(resp, 'event', 'masterStatus')
-         self.checkValue(resp, 'limit', 2)
-         self.checkValue(resp, 'arch', 'x86')
-         self.checkValue(resp, 'slaves', [])
-         self.checkValue(resp, 'node', 'master')
+        self.masterResponse.masterStatus('x86', 2, ['master:slave00'])
+        resp = self.getMasterResponse()
+        self.checkValue(resp, 'event', 'masterStatus')
+        self.checkValue(resp, 'limit', 2)
+        self.checkValue(resp, 'arch', 'x86')
+        self.checkValue(resp, 'slaves', ['master:slave00'])
+        self.checkValue(resp, 'node', 'master')
 
     def testMasterOffline(self):
         self.masterResponse.masterOffline()
