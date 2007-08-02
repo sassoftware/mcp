@@ -263,7 +263,16 @@ class MCPServer(object):
                 if jobId and jobId not in self.jobs:
                     raise mcp_error.UnknownJob('Unknown job Id: %s' % jobId)
                 if jobId:
-                    r = self.jobs[jobId]['status']
+                    if jobId in self.waitingJobs:
+                        ind = self.waitingJobs.index(jobId)
+                        if ind:
+                            statMsg = "Number %d in line for processing" % \
+                                    (ind + 1)
+                        else:
+                            statMsg = "Next in line for processing"
+                        r = (jobstatus.WAITING, statMsg)
+                    else:
+                        r = self.jobs[jobId]['status']
                 else:
                     # scrub the "data" element it's large and not related to
                     # status
@@ -410,10 +419,9 @@ class MCPServer(object):
                                  data['statusMessage']),
                      'slaveId' : node,
                      'data' : 'jobData' in data and data['jobData'] or None})
+                if jobId in self.waitingJobs:
+                    self.waitingJobs.remove(jobId)
                 if data['status'] == jobstatus.RUNNING:
-                    if not firstSeen:
-                        # FIXME: ensure no waiting impact
-                        pass
                     self.jobSlaves[node]['jobId'] = jobId
                     self.jobs[jobId]['slaveId'] = node
                     self.jobSlaves[node]['status'] = slavestatus.ACTIVE
