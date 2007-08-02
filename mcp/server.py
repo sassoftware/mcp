@@ -124,6 +124,7 @@ class MCPServer(object):
     def getVersion(self, version):
         cfg = conarycfg.ConaryConfiguration(True)
         cc = conaryclient.ConaryClient(cfg)
+
         try:
             l = version and (self.cfg.slaveTroveLabel + '/' + version) \
                 or self.cfg.slaveTroveLabel
@@ -482,7 +483,13 @@ class MCPServer(object):
 def main(cfg):
     mcpServer = MCPServer(cfg)
     log.info("MCP server starting")
-    mcpServer.run()
+    try:
+        mcpServer.run()
+    except: # trap any exception and log it
+        exc, e, bt = sys.exc_info()
+        log.error("%s %s" % ("MCP runtime exception: (" + \
+            e.__class__.__name__ + ')', str(e)))
+        log.error('\n'.join(traceback.format_tb(bt)))
 
 def runDaemon():
     cfg = config.MCPConfig()
