@@ -220,7 +220,7 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.checkIncomingCommands()
         res = self.mcp.postQueue.outgoing.pop()
 
-        self.failUnlessEqual(res, '[true, ["ProtocolError", "unable to parse job: expected string or buffer"]]')
+        self.failUnlessEqual(res, '[false, null]')
 
     def testUnknownHostStopSlave(self):
         self.assertRaises(mcp_error.UnknownHost,

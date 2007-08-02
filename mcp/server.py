@@ -29,6 +29,12 @@ PROTOCOL_VERSION = 1
 LOG_LEVEL = logging.INFO
 dumpEvery = 10
 
+def logTraceback(logger, msg = "Traceback:"):
+    exc, e, bt = sys.exc_info()
+    logger(msg)
+    logger(e.__class__.__name__ + ": " + str(e))
+    logger('\n'.join(traceback.format_tb(bt)))
+
 def getSuffix(frozenFlavor):
     flavors = ('x86_64', 'x86')
     flav = deps.ThawFlavor(str(frozenFlavor))
@@ -43,9 +49,7 @@ def commandResponse(func):
             res = False, func(self, command)
         except Exception, e:
             if e.__class__.__name__ not in mcp_error.__dict__:
-                exc, e, bt = sys.exc_info()
-                log.error(e.__class__.__name__ + ": " + str(e))
-                log.error('\n'.join(traceback.format_tb(bt)))
+                logTraceback(log.error)
                 e = mcp_error.InternalServerError()
             res = True, (e.__class__.__name__, str(e))
         if type(command) != dict:
@@ -61,11 +65,18 @@ def logErrors(func):
         try:
             func(self, *args, **kwargs)
         except:
-            exc, e, bt = sys.exc_info()
-            log.error("%s %s" % ("Response Exception: (" + \
-                e.__class__.__name__ + ')', str(e)))
-            log.error('\n'.join(traceback.format_tb(bt)))
+            logTraceback(log.error, "Response Exception:")
     return wrapper
+
+def decodeJson(dataStr):
+    try:
+        data = simplejson.loads(dataStr)
+    except:
+        logTraceback(log.error, "JSON error decoding command:")
+        log.error('Command was: %s' % dataStr)
+        return False, None
+    else:
+        return True, data
 
 class MCPServer(object):
     def __init__(self, cfg):
@@ -149,7 +160,11 @@ class MCPServer(object):
         queueName = 'job:%s' % suffix
         if queueName not in self.jobQueues:
             self.addJobQueue(suffix)
-        data = simplejson.loads(dataStr)
+
+        valid, data = decodeJson(dataStr)
+        if not valid:
+            return None
+
         UUID = data['UUID']
         log.info('Placing %s on %s' % (UUID, queueName))
         data['jobSlaveNVF'] = '%s=%s/%s[is: %s]' % (self.cfg.slaveTroveName,
@@ -160,10 +175,10 @@ class MCPServer(object):
         self.waitingJobs.append(UUID)
 
     def handleJob(self, dataStr, force = False):
-        try:
-            data = simplejson.loads(dataStr)
-        except Exception, e:
-            raise mcp_error.ProtocolError('unable to parse job: %s' % str(e))
+        valid, data = decodeJson(dataStr)
+        if not valid:
+            return None
+
         UUID = data['UUID']
         if (not force) and (UUID in self.jobs) and \
                 (self.jobs[UUID]['status'][0] not in (jobstatus.FINISHED,
@@ -309,11 +324,8 @@ class MCPServer(object):
     def checkIncomingCommands(self):
         dataStr = self.commandQueue.read()
         while dataStr:
-            try:
-                data = simplejson.loads(dataStr)
-            except Exception, e:
-                log.error("JSON Error decoding command %s: %s\n%s" % (e.__class__.__name__, str(e), dataStr))
-            else:
+            valid, data = decodeJson(dataStr)
+            if valid:
                 self.handleCommand(data)
             dataStr = self.commandQueue.read()
 
@@ -450,8 +462,10 @@ class MCPServer(object):
     def checkResponses(self):
         dataStr = self.responseTopic.read()
         while dataStr:
-            data = simplejson.loads(dataStr)
-            self.handleResponse(data)
+            valid, data = decodeJson(dataStr)
+            if valid:
+                self.handleResponse(data)
+
             dataStr = self.responseTopic.read()
 
     def run(self):
@@ -494,10 +508,9 @@ def main(cfg):
     try:
         mcpServer.run()
     except: # trap any exception and log it
-        exc, e, bt = sys.exc_info()
-        log.error("%s %s" % ("MCP runtime exception: (" + \
-            e.__class__.__name__ + ')', str(e)))
-        log.error('\n'.join(traceback.format_tb(bt)))
+        logTraceback(log.error, "MCP runtime exception:")
+    log.info("MCP server exiting")
+
 
 def runDaemon():
     cfg = config.MCPConfig()
