@@ -1,4 +1,4 @@
-#!/usr/bin/python2.4
+#!/usr/bin/python
 #
 # Copyright (c) 2004-2006 rPath, Inc.
 #
@@ -78,18 +78,18 @@ class McpTest(mcp_helper.MCPTest):
         self.client.command.outgoing = []
 
     def ackJobSlave(self, arch = 'x86'):
-        demandName = 'demand:' + arch
+        jobName = 'job:%s' % arch
         dataStr = ''
-        if demandName in self.mcp.demand:
-            if self.mcp.demand[demandName].outgoing:
-                dataStr = self.mcp.demand[demandName].outgoing.pop()
+        if jobName in self.mcp.jobQueues:
+            if self.mcp.jobQueues[jobName].outgoing:
+                dataStr = self.mcp.jobQueues[jobName].outgoing.pop()
             else:
-                self.fail("demand queue %s is empty" % demandName)
+                self.fail("job queue %s is empty" % jobName)
         else:
-            self.fail("demand queue %s doesn't exist" % demandName)
+            self.fail("job queue %s doesn't exist" % jobName)
         data = simplejson.loads(dataStr)
-        troveSpec = data['troveSpec']
-        nvf = cmdline.parseTroveSpec(troveSpec)
+        jobSlaveNVF = data['jobSlaveNVF']
+        nvf = cmdline.parseTroveSpec(jobSlaveNVF)
         version = nvf[1].split('/')[1]
         data = {}
         slaveId = '%s:slave%d' % (self.masterResponse.node, self.slaveId)
@@ -117,82 +117,15 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.checkIncomingCommands()
         assert self.mcp.jobQueues, "Job wasn't marshalled to any queue"
         queueName = [x for x in self.mcp.jobQueues if x.startswith('job')][0]
-        assert queueName == 'job2.0.2-1-1:x86'
-        self.mcp.jobQueues['job2.0.2-1-1:x86'].outgoing == self.getJsonBuild()
-
-    def testDemandSlave(self):
-        self.submitBuild()
-        self.mcp.checkIncomingCommands()
-
-        assert 'demand:x86' in self.mcp.demand
-
-        dataStr = self.mcp.demand['demand:x86'].outgoing.pop()
-
-        data = simplejson.loads(dataStr)
-
-        nvf = cmdline.parseTroveSpec(data['troveSpec'])
-        assert nvf[0] == self.cfg.slaveTroveName
-        assert '2.0.2' in nvf[1]
-        assert not dataStr.endswith('[None]')
-
-    def testDemandPerJob(self):
-        self.submitBuild()
-        self.mcp.checkIncomingCommands()
-
-        assert 'demand:x86' in self.mcp.demand
-
-        assert len(self.mcp.demand['demand:x86'].outgoing) == 1, \
-                "demand for jobslave did not enter queue"
-        self.submitBuild()
-        self.mcp.checkIncomingCommands()
-        assert len(self.mcp.demand['demand:x86'].outgoing) == 2, \
-                "demand for second jobslave did not enter queue"
-
-    def testJobSlaveCountUp(self):
-        assert self.mcp.jobSlaves == {}
-        buildData = self.getJsonBuild()
-        self.submitBuild()
-        self.mcp.checkIncomingCommands()
-
-        assert self.mcp.jobSlaves == {}
-
-        self.ackJobSlave()
-
-        self.mcp.checkResponses()
-
-        assert self.mcp.jobSlaveCounts == {'2.0.2-1-1:x86' : 1}
-
-    def testJobSlaveCountDown(self):
-        self.mcp.jobSlaveCounts = {'2.0.2-1-1:x86' : 1}
-        self.mcp.jobMasters = {'master': {'arch' : 'x86',
-                                          'limit': 2,
-                                          'slaves': ['master:slave0']}}
-        self.mcp.jobSlaves = {'master:slave0' : {'type' : '2.0.2-1-1:x86',
-                                                 'status' : slavestatus.IDLE,
-                                                 'jobId': None}}
-
-        self.stopJobSlave('2.0.2-1-1', 'master:slave0', arch = 'x86')
-
-        self.mcp.checkResponses()
-
-        assert self.mcp.jobSlaveCounts == {'2.0.2-1-1:x86' : 0}
-
-    def testJobSlaveCount(self):
-        assert self.mcp.jobSlaves == {}
-        self.submitBuild()
-        self.mcp.checkIncomingCommands()
-        self.ackJobSlave()
-        self.mcp.checkResponses()
-        self.mcp.jobSlaves == {'2.0.2-1-1:x86': 1}
-
+        assert queueName == 'job:x86'
 
     def testStartSlaveStatus(self):
         assert self.mcp.jobMasters == {}
         self.submitBuild()
         self.mcp.checkIncomingCommands()
-        self.failIf('demand:x86' not in self.mcp.demand,
-                    "expected 'demand:x86' in mcp demands but found %s" % \
-                        ', '.join(self.mcp.demand.keys()))
+        self.failIf('job:x86' not in self.mcp.jobQueues,
+                "expected 'job:x86' in jobQueues, but found %s" % \
+                        ', '.join(self.mcp.jobQueues.keys()))
         slaveId = self.ackJobSlave()
         self.mcp.checkResponses()
 
@@ -251,15 +184,6 @@ class McpTest(mcp_helper.MCPTest):
 
         self.assertLogContent('No JSON object could be decoded')
 
-    def testDemandReturnCode(self):
-        res = self.mcp.demandJobSlave('1.0.1-1-1', 'x86_64')
-        assert len(self.mcp.demand['demand:x86_64'].outgoing) == 1
-        demanded = self.mcp.demand['demand:x86_64'].outgoing[0]
-        assert '1.0.1-1-1' in demanded
-        res = self.mcp.demandJobSlave('1.0.1-1-1', 'x86_64')
-        assert not res
-        assert len(self.mcp.demand['demand:x86_64'].outgoing) == 2
-
     def testJobConflict(self):
         build = self.getJsonBuild()
         self.client.submitJob(build)
@@ -298,44 +222,15 @@ class McpTest(mcp_helper.MCPTest):
 
         self.failUnlessEqual(res, '[true, ["ProtocolError", "unable to parse job: expected string or buffer"]]')
 
-    def testSetSlaveTTL(self):
-        self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
-                                                'jobId' : 'rogueJob',
-                                                'type' : '1.0.4-12-3:x86'}}
-        self.mcp.setSlaveTTL('master:slave', 0)
-        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
-        self.checkValue(control, 'node', 'master:slave')
-        self.checkValue(control, 'action', 'setTTL')
-        self.checkValue(control, 'TTL', 0)
-        assert 'protocolVersion' in control
-
-    def testUnknownHostTTL(self):
-        self.assertRaises(mcp_error.UnknownHost,
-                          self.mcp.setSlaveTTL, 'unknown', 0)
-
-
     def testUnknownHostStopSlave(self):
         self.assertRaises(mcp_error.UnknownHost,
-                          self.mcp.stopSlave, 'unknown', delayed = True)
+                          self.mcp.stopSlave, 'unknown')
 
-    def testStopSlaveDelayed(self):
+    def testStopSlave(self):
         self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
                                                 'jobId' : 'rogueJob',
                                                 'type' : '1.0.4-12-3:x86'}}
-        self.mcp.stopSlave('master:slave', delayed = True)
-
-        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
-        # a delayed stop slave is the exact same thing as a TTL of zero
-        self.checkValue(control, 'node', 'master:slave')
-        self.checkValue(control, 'action', 'setTTL')
-        self.checkValue(control, 'TTL', 0)
-        assert 'protocolVersion' in control
-
-    def testStopSlaveImmediate(self):
-        self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
-                                                'jobId' : 'rogueJob',
-                                                'type' : '1.0.4-12-3:x86'}}
-        self.mcp.stopSlave('master:slave', delayed = False)
+        self.mcp.stopSlave('master:slave')
 
         control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
         self.checkValue(control, 'node', 'master')
@@ -437,11 +332,15 @@ class McpTest(mcp_helper.MCPTest):
                                             'slaveId' : 'master:slave'}}
 
         assert not self.mcp.jobQueues
-        assert not self.mcp.jobCounts
         self.mcp.respawnJob('master:slave')
         self.assertLogContent('Respawn')
-        assert self.mcp.jobQueues['job2.0.2-1-1:x86'].outgoing[0] == build
-        assert self.mcp.jobCounts == {'2.0.2-1-1:x86': 1}
+
+        outBuild = simplejson.loads(self.mcp.jobQueues['job:x86'].outgoing[0])
+        build = simplejson.loads(build)
+        for key, val in build.iteritems():
+            self.failIf(outBuild.get(key) != val,
+                    "build data %s did not match expected value: %s" % \
+                        (key, val))
 
     def testRespawnData(self):
         build = self.getJsonBuild()
@@ -450,7 +349,6 @@ class McpTest(mcp_helper.MCPTest):
                                                 'type' : '1.0.4-12-3:x86'}}
         self.mcp.respawnJob('master:slave')
         assert not self.mcp.jobQueues
-        assert not self.mcp.jobCounts
 
     def testSlaveOffline(self):
         self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
@@ -609,8 +507,7 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.commandQueue = MockDisc()
         self.mcp.responseTopic = MockDisc()
         self.mcp.controlTopic = MockDisc()
-        self.mcp.demand['demand:x86'] = MockDisc()
-        self.mcp.jobQueues['job3.0.0-1-1:x86'] = MockDisc()
+        self.mcp.jobQueues['job:x86'] = MockDisc()
         self.mcp.postQueue = MockDisc()
 
         self.mcp.running = True
@@ -620,10 +517,8 @@ class McpTest(mcp_helper.MCPTest):
                     "Response Topic was not disconnected")
         self.failIf(self.mcp.controlTopic.connected,
                     "Control Topic was not disconnected")
-        self.failIf(self.mcp.demand['demand:x86'].connected,
-                    "Demand Queue was not disconnected")
-        self.failIf(self.mcp.jobQueues['job3.0.0-1-1:x86'].connected,
-                    "Demand Queue was not disconnected")
+        self.failIf(self.mcp.jobQueues['job:x86'].connected,
+                    "Job Queue was not disconnected")
         self.failIf(self.mcp.postQueue.connected,
                     "Post Queue was not disconnected")
 
@@ -674,9 +569,6 @@ class McpTest(mcp_helper.MCPTest):
                     "job was not associated with it's slave")
         self.failIf(self.mcp.jobSlaves[slaveId]['jobId'] != jobId,
                     "slave was not associtated with it's job")
-
-        self.failIf(self.mcp.jobCounts != {'3.0.0-1-1:x86': 1},
-                    "job count was not decremented properly")
 
     def testStopJobStatus(self):
         jobId = 'dummy-build-23'
@@ -775,6 +667,23 @@ class McpTest(mcp_helper.MCPTest):
         self.failIf(self.mcp.jobMasters[masterId]['slaves'],
                     "Slave was not disassociated from master")
 
+    def testMasterStatus2(self):
+        masterId = 'testmaster'
+        slaveId = masterId + ':slave'
+        self.mcp.jobMasters = {masterId: {'limit' : 1, 'arch': 'x86',
+                                          'slaves' : []}}
+
+        self.mcp.handleResponse({'node' : masterId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'masterStatus',
+                                 'arch' : 'x86',
+                                 'limit' : 1,
+                                 'slaves' : [slaveId]})
+
+        self.failIf(not self.mcp.jobSlaves,
+                    "Slave was not added when master reported it")
+        self.failIf(not self.mcp.jobMasters[masterId]['slaves'],
+                    "Slave was not assciated with master")
 
     def testCommandJSVersion(self):
         self.mcp.handleCommand({'uuid' : '12345',
@@ -796,6 +705,24 @@ class McpTest(mcp_helper.MCPTest):
         err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert not err
         assert data == {}
+
+    def testNodeStatus(self):
+        masterId = 'master99'
+        slaveId = 'master99:slave00'
+        self.mcp.jobMasters = {masterId : {'limit' : 1,
+                                           'arch' : 'x86_64',
+                                           'slaves' : [slaveId]}}
+        self.mcp.jobSlaves = {slaveId: {'status' : slavestatus.IDLE,
+                                        'type' : '3.0.0-1-1', 'jobId' : None}}
+        self.mcp.handleCommand({'uuid' : '12345',
+                                'protocolVersion' : 1,
+                                'action' : 'nodeStatus'})
+
+        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        assert not err
+        assert data == {'master99': {'arch': 'x86_64', 'limit': 1,
+            'slaves': {'master99:slave00':
+                {'status': 200, 'type': '3.0.0-1-1', 'jobId': None}}}}
 
     def testCommandJobStatus(self):
         jobId = 'dummy-cook-1'
@@ -854,8 +781,7 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
                                 'action' : 'stopSlave',
-                                'slaveId' : slaveId,
-                                'delayed' : False})
+                                'slaveId' : slaveId})
         err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert err
         assert data == ['UnknownHost', 'Unknown Host: %s' % slaveId]
@@ -885,21 +811,6 @@ class McpTest(mcp_helper.MCPTest):
         err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
         assert err
         self.failIf(data != ['UnknownHost', 'Unknown Host: %s' % masterId],
-                    "Host was not reported as unknown")
-
-    def testCommandSetSlaveTTL(self):
-        masterId = 'master'
-        slaveId = masterId + ':slave2'
-
-        self.mcp.handleCommand({'uuid' : '12345',
-                                'protocolVersion' : 1,
-                                'action' : 'setSlaveTTL',
-                                'slaveId' : slaveId,
-                                'TTL' : 500})
-
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
-        assert err
-        self.failIf(data != ['UnknownHost', 'Unknown Host: %s' % slaveId],
                     "Host was not reported as unknown")
 
     def testRunMcp(self):
