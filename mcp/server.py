@@ -402,13 +402,10 @@ class MCPServer(object):
                 if data['status'] != slavestatus.OFFLINE:
                     self.jobSlaves[slaveId] = \
                         {'status' : data['status'],
-                         'jobId': None,
+                         'jobId': data['jobId'],
                          'type': data['type']}
                     if slaveId not in master['slaves']:
                         master['slaves'].append(slaveId)
-                    if data['status'] == slavestatus.BUILDING:
-                        #FIXME: add logic for removing from waitingJobs
-                        pass
                 else:
                     self.slaveOffline(slaveId)
             elif event == 'jobStatus':
