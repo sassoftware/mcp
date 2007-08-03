@@ -42,8 +42,9 @@ class MCPResponse(object):
         self._send(jobId = jobId, status = status,
                    statusMessage = statusMessage)
 
-    def slaveStatus(self, slaveId, status, type):
-        self._send(slaveId = slaveId, status = status, type = type)
+    def slaveStatus(self, slaveId, status, type, jobId = None):
+        self._send(slaveId = slaveId, status = status, type = type,
+                jobId = jobId)
 
     def masterStatus(self, arch, limit, slaveIds):
         self._send(arch = arch, limit = limit, slaves = slaveIds)
