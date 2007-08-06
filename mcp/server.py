@@ -205,6 +205,12 @@ class MCPServer(object):
     def stopSlave(self, slaveId):
         if slaveId not in self.jobSlaves:
             raise mcp_error.UnknownHost("Unknown Host: %s" % slaveId)
+
+        # clear the job log when a slave goes down
+        jobId = self.jobSlaves[slaveId]['jobId']
+        if jobId in self.logFiles:
+            del self.logFiles[jobId]
+
         # slave Id is masterId:slaveId so splitting on : gives masterId
         control = {'protocolVersion' : PROTOCOL_VERSION,
                    'node' : slaveId.split(':')[0],
@@ -439,8 +445,6 @@ class MCPServer(object):
                     self.jobs[jobId]['slaveId'] = None
                     self.jobSlaves[node]['jobId'] = None
                     self.jobSlaves[node]['status'] = slavestatus.IDLE
-                    if jobId in self.logFiles:
-                        del self.logFiles[jobId]
                 self.jobs[jobId]['status'] = (data['status'],
                                               data['statusMessage'])
 

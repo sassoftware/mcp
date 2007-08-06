@@ -230,7 +230,12 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
                                                 'jobId' : 'rogueJob',
                                                 'type' : '1.0.4-12-3:x86'}}
+        self.mcp.logFiles = {'rogueJob': 'dummy logfile'}
+
         self.mcp.stopSlave('master:slave')
+
+        self.failIf('rogueJob' in self.mcp.logFiles,
+            "Log file handler should have been removed")
 
         control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
         self.checkValue(control, 'node', 'master')
@@ -590,14 +595,14 @@ class McpTest(mcp_helper.MCPTest):
                                  'status' : jobstatus.FINISHED,
                                  'statusMessage' : ''})
 
-        self.failIf(self.mcp.logFiles,
-                    "Log file handler should have been removed")
+        self.failUnless(self.mcp.logFiles,
+                    "Log file handler should not yet have been removed")
 
         self.failIf(self.mcp.jobs[jobId]['slaveId'] != None,
-                    "job was not disassociated with it's slave upon compeltion")
+                    "job was not disassociated with its slave upon completion")
 
         self.failIf(self.mcp.jobSlaves[slaveId]['jobId'] != None,
-                    "slave was not disassociated with it's job upon completion")
+                    "slave was not disassociated with its job upon completion")
 
     def testJobLog(self):
         jobId = 'dummy-build-96'
