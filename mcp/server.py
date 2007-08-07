@@ -447,10 +447,13 @@ class MCPServer(object):
                     self.jobs[jobId]['slaveId'] = None
                     self.jobSlaves[node]['jobId'] = None
                     self.jobSlaves[node]['status'] = slavestatus.IDLE
-                    if data['status'] == jobstatus.FINISHED:
-                        log.info("Job %s finished." % jobId)
-                    elif data['status'] == jobstatus.FAILED:
-                        log.info("Job %s failed: %s" % (jobId, data['statusMessage']))
+
+                    # log changes of status only once
+                    if self.jobs[jobId]['status'][0] != data['status']:
+                        if data['status'] == jobstatus.FINISHED:
+                            log.info("Job %s finished." % jobId)
+                        elif data['status'] == jobstatus.FAILED:
+                            log.info("Job %s failed: %s" % (jobId, data['statusMessage']))
                 self.jobs[jobId]['status'] = (data['status'],
                                               data['statusMessage'])
             elif event == 'jobLog':
