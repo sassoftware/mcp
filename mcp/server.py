@@ -126,6 +126,7 @@ class MCPServer(object):
                     open(os.path.join( \
                         self.cfg.logPath, 'jobs',
                         jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
+                log.info("Logging job %s to %s" % (jobId, self.logFiles[jobId].name))
             logFile = self.logFiles[jobId]
             logFile.write(message + '\n')
             logFile.flush()
