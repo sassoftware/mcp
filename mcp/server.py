@@ -429,7 +429,6 @@ class MCPServer(object):
             elif event == 'jobStatus':
                 slave = self.getSlave(node)
                 jobId = data['jobId']
-                firstSeen = jobId not in self.jobs
                 job = self.jobs.setdefault(jobId, \
                     {'status' : (data['status'],
                                  data['statusMessage']),
@@ -441,17 +440,17 @@ class MCPServer(object):
                     self.jobSlaves[node]['jobId'] = jobId
                     self.jobs[jobId]['slaveId'] = node
                     self.jobSlaves[node]['status'] = slavestatus.ACTIVE
+                    log.info("Job %s started." % jobId)
                 elif data['status'] in (jobstatus.FINISHED, jobstatus.FAILED):
                     self.jobs[jobId]['slaveId'] = None
                     self.jobSlaves[node]['jobId'] = None
                     self.jobSlaves[node]['status'] = slavestatus.IDLE
+                    if data['status'] == jobstatus.FINISHED:
+                        log.info("Job %s finished." % jobId)
+                    elif data['status'] == jobstatus.FAILED:
+                        log.info("Job %s failed: %s" % (jobId, data['statusMessage']))
                 self.jobs[jobId]['status'] = (data['status'],
                                               data['statusMessage'])
-
-            elif event == 'postJobOutput':
-                self.postQueue.send(data['dest'],
-                                    simplejson.dumps({'uuid': data['jobId'],
-                                                      'urls': data['urls']}))
             elif event == 'jobLog':
                 slave = self.getSlave(node)
                 self.logJob(data['jobId'], data['message'])

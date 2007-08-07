@@ -614,20 +614,6 @@ class McpTest(mcp_helper.MCPTest):
                                  'message' : 'fake message'})
         self.failIf(jobId not in self.mcp.logFiles, "log file was not opened")
 
-    def testPostJobOutput(self):
-        jobId = 'dummy-build-32'
-        slaveId = 'master:slave'
-        self.mcp.handleResponse({'node' : slaveId,
-                                 'protocolVersion' : 1,
-                                 'event' : 'postJobOutput',
-                                 'jobId' : jobId,
-                                 'urls' : ['http://fake/1', 'test image'],
-                                 'dest' : 'fake'})
-
-        data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
-        self.failUnlessEqual(data, {'uuid': 'dummy-build-32',
-                                    'urls': ['http://fake/1', 'test image']})
-
     def testBadResponseProtocol(self):
         jobId = 'dummy-build-54'
         slaveId = 'master:slave'

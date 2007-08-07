@@ -94,15 +94,6 @@ class ResponseTest(mcp_helper.MCPTest):
         self.checkValue(resp, 'event', 'protocol')
         self.checkValue(resp, 'protocolVersion', 3)
 
-    def testPostJobOutput(self):
-        self.slaveResponse.postJobOutput('dummy-build-5', 'dummy-dest',
-                                         ['http://foo/UUID', 'Dummy Build'])
-
-        resp = self.getSlaveResponse()
-        self.checkValue(resp, 'event', 'postJobOutput')
-        self.checkValue(resp, 'urls',  ['http://foo/UUID', 'Dummy Build'])
-        self.checkValue(resp, 'jobId', 'dummy-build-5')
-
     def testIllegalEvent(self):
         respObj = response.MCPResponse('dummyNode', self.clientCfg)
         self.assertRaises(AssertionError, respObj._send, event = 'notLegal')
