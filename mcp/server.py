@@ -440,7 +440,8 @@ class MCPServer(object):
                     self.jobSlaves[node]['jobId'] = jobId
                     self.jobs[jobId]['slaveId'] = node
                     self.jobSlaves[node]['status'] = slavestatus.ACTIVE
-                    log.info("Job %s started." % jobId)
+                    if self.jobs[jobId]['status'][0] != data['status']:
+                        log.info("Job %s started." % jobId)
                 elif data['status'] in (jobstatus.FINISHED, jobstatus.FAILED):
                     self.jobs[jobId]['slaveId'] = None
                     self.jobSlaves[node]['jobId'] = None
