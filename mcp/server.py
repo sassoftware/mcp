@@ -212,7 +212,7 @@ class MCPServer(object):
         jobId = self.jobSlaves[slaveId]['jobId']
         if jobId in self.logFiles:
             # compress log file
-            util.execute("/bin/gzip %s" % self.logFiles[jobId])
+            util.execute("/bin/gzip %s" % self.logFiles[jobId].name)
             del self.logFiles[jobId]
 
         # slave Id is masterId:slaveId so splitting on : gives masterId
