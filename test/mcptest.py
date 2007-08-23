@@ -230,7 +230,8 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
                                                 'jobId' : 'rogueJob',
                                                 'type' : '1.0.4-12-3:x86'}}
-        self.mcp.logFiles = {'rogueJob': 'dummy logfile'}
+        self.mcp.logFiles = {'rogueJob': self.mcpBasePath + '/logfile'}
+        open(self.mcpBasePath + '/logfile', 'w').write("Hello World")
 
         self.mcp.stopSlave('master:slave')
 
@@ -242,6 +243,9 @@ class McpTest(mcp_helper.MCPTest):
         self.checkValue(control, 'action', 'stopSlave')
         self.checkValue(control, 'slaveId', 'master:slave')
         assert 'protocolVersion' in control
+
+        # make sure job logfile is compressed
+        self.failUnless(os.path.exists(self.mcpBasePath + '/logfile.gz'))
 
     def testStopJobNoQueue(self):
         jobId = 'rogueJob'

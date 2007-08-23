@@ -14,6 +14,7 @@ from conary import conaryclient
 from conary import conarycfg
 from conary.errors import TroveNotFound
 from conary.deps import deps
+from conary.lib import util
 import logging
 log = logging
 
@@ -210,6 +211,8 @@ class MCPServer(object):
         # clear the job log when a slave goes down
         jobId = self.jobSlaves[slaveId]['jobId']
         if jobId in self.logFiles:
+            # compress log file
+            util.execute("/bin/gzip %s" % self.logFiles[jobId])
             del self.logFiles[jobId]
 
         # slave Id is masterId:slaveId so splitting on : gives masterId
