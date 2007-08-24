@@ -230,8 +230,9 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
                                                 'jobId' : 'rogueJob',
                                                 'type' : '1.0.4-12-3:x86'}}
-        self.mcp.logFiles = {'rogueJob': self.mcpBasePath + '/logfile'}
-        open(self.mcpBasePath + '/logfile', 'w').write("Hello World")
+        f = open(self.mcpBasePath + '/logfile', 'w')
+        self.mcp.logFiles = {'rogueJob': f}
+        f.write("Hello World")
 
         self.mcp.stopSlave('master:slave')
 
