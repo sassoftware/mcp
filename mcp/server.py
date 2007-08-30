@@ -168,6 +168,11 @@ class MCPServer(object):
                                          namespace = self.cfg.namespace,
                                          autoSubscribe = False)
 
+    def appendWaitingJob(self, UUID):
+        if UUID in self.waitingJobs:
+            self.waitingJobs.remove(UUID)
+        self.waitingJobs.append(UUID)
+
     def addJob(self, version, suffix, dataStr):
         queueName = 'job:%s' % suffix
         if queueName not in self.jobQueues:
@@ -184,7 +189,7 @@ class MCPServer(object):
                                                   suffix)
         dataStr = simplejson.dumps(data)
         self.jobQueues[queueName].send(dataStr)
-        self.waitingJobs.append(UUID)
+        self.appendWaitingJob(UUID)
 
     def handleJob(self, dataStr, force = False):
         valid, data = decodeJson(dataStr)

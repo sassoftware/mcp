@@ -946,6 +946,17 @@ class McpTest(mcp_helper.MCPTest):
             conaryclient.ConaryClient = ConaryClient
             self.mcp.slaveSource = trovesource.SimpleTroveSource()
 
+    def testAppendWaitingJob(self):
+        buildId = 'test.rpath.local-build-1'
+        self.mcp.waitingJobs = []
+        self.mcp.appendWaitingJob(buildId)
+        self.failIf(self.mcp.waitingJobs != [buildId],
+                "Unexpected behavior for  append waiting jobs")
+
+        self.mcp.appendWaitingJob(buildId)
+        self.failIf(self.mcp.waitingJobs != [buildId],
+                "Unexpected behavior for  append waiting jobs")
+
 
 if __name__ == "__main__":
     testsuite.main()
