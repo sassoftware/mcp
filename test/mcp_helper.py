@@ -163,6 +163,7 @@ class MCPTestMixin:
     def tearDown(self):
         self.mcp.running = False
         util.rmtree(self.mcpCfg.basePath)
+        util.rmtree(self.mcpBasePath, ignore_errors = True)
 
 
 class MCPTest(testhelp.TestCase, MCPTestMixin):

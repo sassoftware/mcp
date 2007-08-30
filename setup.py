@@ -5,7 +5,7 @@
 #
 
 # dataManifest is a list of relative paths to include in the data tarball
-dataManifest = ['config', 'bin', 'mcp.init']
+dataManifest = ['bin', 'mcp.init']
 
 import os
 

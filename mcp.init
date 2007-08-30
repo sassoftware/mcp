@@ -2,7 +2,7 @@
 #
 # mcp:  Starts the rBuilder Master Control Program.
 #
-# chkconfig: 2345 24 15
+# chkconfig: 2345 50 10
 # description: Controls rBuilder Slave Appliances.
 # processname: mcp
 # config: /usr/bin

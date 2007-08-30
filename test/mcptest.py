@@ -232,13 +232,23 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
                                                 'jobId' : 'rogueJob',
                                                 'type' : '1.0.4-12-3:x86'}}
+        f = open(self.mcpBasePath + '/logfile', 'w')
+        self.mcp.logFiles = {'rogueJob': f}
+        f.write("Hello World")
+
         self.mcp.stopSlave('master:slave')
+
+        self.failIf('rogueJob' in self.mcp.logFiles,
+            "Log file handler should have been removed")
 
         control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
         self.checkValue(control, 'node', 'master')
         self.checkValue(control, 'action', 'stopSlave')
         self.checkValue(control, 'slaveId', 'master:slave')
         assert 'protocolVersion' in control
+
+        # make sure job logfile is compressed
+        self.failUnless(os.path.exists(self.mcpBasePath + '/logfile.gz'))
 
     def testStopJobNoQueue(self):
         jobId = 'rogueJob'
@@ -599,14 +609,14 @@ class McpTest(mcp_helper.MCPTest):
                                  'status' : jobstatus.FINISHED,
                                  'statusMessage' : ''})
 
-        self.failIf(self.mcp.logFiles,
-                    "Log file handler should have been removed")
+        self.failUnless(self.mcp.logFiles,
+                    "Log file handler should not yet have been removed")
 
         self.failIf(self.mcp.jobs[jobId]['slaveId'] != None,
-                    "job was not disassociated with it's slave upon compeltion")
+                    "job was not disassociated with its slave upon completion")
 
         self.failIf(self.mcp.jobSlaves[slaveId]['jobId'] != None,
-                    "slave was not disassociated with it's job upon completion")
+                    "slave was not disassociated with its job upon completion")
 
     def testJobLog(self):
         jobId = 'dummy-build-96'
@@ -617,20 +627,6 @@ class McpTest(mcp_helper.MCPTest):
                                  'jobId' : jobId,
                                  'message' : 'fake message'})
         self.failIf(jobId not in self.mcp.logFiles, "log file was not opened")
-
-    def testPostJobOutput(self):
-        jobId = 'dummy-build-32'
-        slaveId = 'master:slave'
-        self.mcp.handleResponse({'node' : slaveId,
-                                 'protocolVersion' : 1,
-                                 'event' : 'postJobOutput',
-                                 'jobId' : jobId,
-                                 'urls' : ['http://fake/1', 'test image'],
-                                 'dest' : 'fake'})
-
-        data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
-        self.failUnlessEqual(data, {'uuid': 'dummy-build-32',
-                                    'urls': ['http://fake/1', 'test image']})
 
     def testBadResponseProtocol(self):
         jobId = 'dummy-build-54'
