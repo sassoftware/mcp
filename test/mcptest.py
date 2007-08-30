@@ -19,6 +19,8 @@ from conary import conaryclient
 from conary.conaryclient import cmdline
 from conary import versions
 from conary.errors import TroveNotFound
+from conary.repository import trovesource
+from conary.deps import deps
 
 from mcp import server, mcp_error, jobstatus, slavestatus
 import mcp_helper
@@ -438,25 +440,16 @@ class McpTest(mcp_helper.MCPTest):
 
     def testGetVersion(self):
         # mock out the conaryclient object to catch the repos call
-        ConaryClient = conaryclient.ConaryClient
-        class MockClient(ConaryClient):
-            class MockRepos(object):
-                def findTrove(self, *args, **kwargs):
-                    print args, kwargs
-                    return (('dummy', 'version', None),)
-            def __init__(self, *args, **kw):
-                ConaryClient.__init__(self, *args, **kw)
-                self.repos = self.MockRepos()
-
+        trvName = 'group-core'
+        trvVersion = versions.VersionFromString('/products.rpath.com@rpath:js/4.0.0-1-1')
+        trvFlavor = deps.parseFlavor('')
+        self.mcp.jobSlaveSource.addTrove(trvName, trvVersion, trvFlavor)
         try:
-            conaryclient.ConaryClient = MockClient
-            ret, output = \
-                self.captureOutput(server.MCPServer.getVersion, self.mcp, '')
-            refOut = "(None, ('group-core', 'products.rpath.com@rpath:js', " \
-                "None)) {}\n"
-            self.failUnlessEqual(output, refOut)
+            res = server.MCPServer.getVersion(self.mcp, '')
+            ref = (trvName, trvVersion, trvFlavor)
+            self.failUnlessEqual(ref, res)
         finally:
-            conaryclient.ConaryClient = ConaryClient
+            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
 
 
     def testGetMissingVersion(self):
@@ -485,6 +478,22 @@ class McpTest(mcp_helper.MCPTest):
 
         self.failIf('dummy-cook-47' not in self.mcp.jobs,
                     "Cook job was not recorded")
+
+    def testBadJsVersion(self):
+        UUID =  'dummy-cook-47'
+        # test a bogus jsversion to account for proper mcp reaction
+        # actual version doesn't matter since the slaveSource is empty
+        mcp = server.MCPServer(self.cfg)
+        mcp.handleJob(simplejson.dumps({'type': 'build',
+                                             'UUID': UUID,
+                                             'troveFlavor': 'x86',
+                                             'data': {'jsversion': '0'}}))
+
+        self.failIf(UUID not in mcp.jobs,
+                    "Cook job was not recorded")
+
+        self.failIf(mcp.jobs[UUID]['status'][0] != jobstatus.FAILED,
+                "Expected job to fail on missing jobslave version")
 
     def testLogErrors(self):
         class Foo(object):
@@ -821,10 +830,13 @@ class McpTest(mcp_helper.MCPTest):
         def newSleep(*args, **kwargs):
             raise IterationComplete
 
+        stockSlaveSource = self.mcp.stockSlaveSource
         try:
+            self.mcp.stockSlaveSource = lambda: None
             time.sleep = newSleep
             self.assertRaises(IterationComplete, self.mcp.run)
         finally:
+            self.mcp.stockSlaveSource = stockSlaveSource
             time.sleep = sleep
 
     def testWaitingJobNumber(self):
@@ -912,6 +924,31 @@ class McpTest(mcp_helper.MCPTest):
                 "Expected status %d, but got %d" % (jobstatus.RUNNING, status))
         self.failIf(statusMessage != "starting",
                 'Status message was masked by waiting logic')
+
+    def testStockSlaveSource(self):
+        # mock out the conaryclient object to catch the repos call
+        trvName = 'group-core'
+        trvVersion = versions.VersionFromString( \
+                '/products.rpath.com@rpath:js/4.0.0-1-1')
+        trvFlavor = deps.parseFlavor('')
+        ConaryClient = conaryclient.ConaryClient
+        class MockClient(object):
+            def iterTroveList(x, *args, **kwargs):
+                yield (trvName, trvVersion, trvFlavor)
+            def __init__(x, *args, **kw):
+                x.db = x
+                x.findTrove = lambda *args, **kwargs: x
+
+        try:
+            conaryclient.ConaryClient = MockClient
+            self.mcp.stockSlaveSource()
+            res = self.mcp.jobSlaveSource.findTrove( \
+                    None, (trvName, trvVersion, trvFlavor))
+            ref = [(trvName, trvVersion, trvFlavor)]
+            self.failIf(ref != res, "expected slaveSource to be stocked")
+        finally:
+            conaryclient.ConaryClient = ConaryClient
+            self.mcp.slaveSource = trovesource.SimpleTroveSource()
 
 
 if __name__ == "__main__":

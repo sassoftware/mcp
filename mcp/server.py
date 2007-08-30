@@ -12,6 +12,7 @@ import simplejson
 
 from conary import conaryclient
 from conary import conarycfg
+from conary.repository import trovesource
 from conary.errors import TroveNotFound
 from conary.deps import deps
 import logging
@@ -28,6 +29,8 @@ PROTOCOL_VERSION = 1
 
 LOG_LEVEL = logging.INFO
 dumpEvery = 10
+
+SLAVE_SET_NAME = 'group-jobslave-set'
 
 def logTraceback(logger, msg = "Traceback:"):
     exc, e, bt = sys.exc_info()
@@ -87,6 +90,8 @@ class MCPServer(object):
         self.jobMasters = {}
         self.logFiles = {}
 
+        self.jobSlaveSource = trovesource.SimpleTroveSource()
+
         self.cfg = cfg
         if cfg.logPath:
             logging.basicConfig(level=LOG_LEVEL,
@@ -132,14 +137,19 @@ class MCPServer(object):
         else:
             print jobId + ':', message
 
-    def getVersion(self, version):
+    def stockSlaveSource(self):
         cfg = conarycfg.ConaryConfiguration(True)
         cc = conaryclient.ConaryClient(cfg)
+        slaveSetTrove = cc.db.findTrove(None, (SLAVE_SET_NAME, None, None))
+        for slaveName, slaveVersion, slaveFlavor in \
+                slaveSetTrove.iterTroveList(strongRefs = True):
+            self.jobSlaveSource.addTrove(slaveName, slaveVersion, slaveFlavor)
 
+    def getVersion(self, version):
         try:
             l = version and (self.cfg.slaveTroveLabel + '/' + version) \
                 or self.cfg.slaveTroveLabel
-            troves = cc.repos.findTrove( \
+            troves = self.jobSlaveSource.findTrove( \
                 None, (self.cfg.slaveTroveName, l, None))
         except TroveNotFound:
             return []
@@ -195,12 +205,21 @@ class MCPServer(object):
             suffix = getSuffix(data['data']['arch'])
         else:
             raise mcp_error.UnknownJobType('Unknown job type: %s' % type)
-        self.jobs[data['UUID']] = \
-            {'status' : (jobstatus.WAITING, 'Waiting to be processed'),
-             'slaveId' : None,
-             'data' : dataStr}
-        self.addJob(version, suffix, dataStr)
+        if version:
+            self.jobs[data['UUID']] = \
+                {'status' : (jobstatus.WAITING, 'Waiting to be processed'),
+                'slaveId' : None,
+                'data' : dataStr}
+            self.addJob(version, suffix, dataStr)
+        else:
+            self.jobs[data['UUID']] = \
+                    {'status' : (jobstatus.FAILED,
+                        "Unknown Jobslave Version '%s'" % \
+                                data['data']['jsversion']),
+                'slaveId' : None,
+                'data' : dataStr}
         return data['UUID']
+
 
     def stopSlave(self, slaveId):
         if slaveId not in self.jobSlaves:
@@ -469,6 +488,7 @@ class MCPServer(object):
         self.running = True
         self.requestMasterStatus()
         self.requestSlaveStatus()
+        self.stockSlaveSource()
         try:
             lastDump = time.time()
             while self.running:
