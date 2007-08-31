@@ -13,6 +13,8 @@ import time
 
 import os, sys
 import threading
+import tempfile
+
 from mcp import queue
 from mcp import constants
 from conary import conaryclient
@@ -21,6 +23,7 @@ from conary import versions
 from conary.errors import TroveNotFound
 from conary.repository import trovesource
 from conary.deps import deps
+from conary.lib import util
 
 from mcp import server, mcp_error, jobstatus, slavestatus
 import mcp_helper
@@ -310,23 +313,13 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
                                                 'jobId' : 'rogueJob',
                                                 'type' : '1.0.4-12-3:x86'}}
-        f = open(self.mcpBasePath + '/logfile', 'w')
-        self.mcp.logFiles = {'rogueJob': f}
-        f.write("Hello World")
-
         self.mcp.stopSlave('master:slave')
-
-        self.failIf('rogueJob' in self.mcp.logFiles,
-            "Log file handler should have been removed")
 
         control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
         self.checkValue(control, 'node', 'master')
         self.checkValue(control, 'action', 'stopSlave')
         self.checkValue(control, 'slaveId', 'master:slave')
         assert 'protocolVersion' in control
-
-        # make sure job logfile is compressed
-        self.failUnless(os.path.exists(self.mcpBasePath + '/logfile.gz'))
 
     def testStopJob(self):
         jobId = 'rogueJob'
@@ -434,11 +427,22 @@ class McpTest(mcp_helper.MCPTest):
         assert not self.mcp.jobQueues
 
     def testSlaveOffline(self):
+        jobId = 'rogueJob'
         self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
-                                                'jobId' : None,
+                                                'jobId' : jobId,
                                                 'type' : '1.0.4-12-3:x86'}}
+        f = open(self.mcpBasePath + '/logfile', 'w')
+        self.mcp.logFiles = {jobId: f}
+        f.write("Hello World")
+
         self.mcp.slaveOffline('master:slave')
+
+        self.failIf(jobId in self.mcp.logFiles,
+            "Log file handler should have been removed")
         assert self.mcp.jobSlaves == {}
+
+        # make sure job logfile is compressed
+        self.failUnless(os.path.exists(self.mcpBasePath + '/logfile.gz'))
 
     def testGetSlave(self):
         self.mcp.getSlave('master:slave')
@@ -1036,6 +1040,51 @@ class McpTest(mcp_helper.MCPTest):
         finally:
             conaryclient.ConaryClient = ConaryClient
             self.mcp.slaveSource = trovesource.SimpleTroveSource()
+
+    def testJobLogFailure(self):
+        jobId = 'rogueJob'
+        slaveId = 'master:slave'
+        self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
+                                                'jobId' : jobId,
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.KILLED, ''),
+                                  'slaveId': slaveId}}
+
+        def BadExec(*args, **kwargs):
+            raise OSError
+
+        class BadFile(object):
+            def __init__(self, name):
+                self.name = name
+            def close(self):
+                pass
+
+        tmpDir = tempfile.mkdtemp()
+        logPath = os.path.join(tmpDir, 'not', 'there')
+        self.mcp.logFiles[jobId] = BadFile(logPath)
+        try:
+            self.captureOutput(self.mcp.slaveOffline, slaveId)
+            self.failIf(self.mcp.jobSlaves != {},
+                    "Slave destrcution interrupted by logFile issues")
+        finally:
+            util.rmtree(tmpDir, ignore_errors = True)
+
+    def testJobLogFailure2(self):
+        jobId = 'rogueJob'
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.KILLED, ''),
+                                  'slaveId': None}}
+
+        tmpDir = tempfile.mkdtemp()
+        logPath = os.path.join(tmpDir, 'not', 'there')
+        savedLogPath = self.mcp.cfg.logPath
+        try:
+            self.mcp.cfg.logPath = logPath
+            self.mcp.logJob(jobId, "test")
+        finally:
+            self.mcp.cfg.logPath = savedLogPath
+            util.rmtree(tmpDir, ignore_errors = True)
 
 
 if __name__ == "__main__":

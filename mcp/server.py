@@ -121,14 +121,20 @@ class MCPServer(object):
         message = '\n'.join([x for x in message.splitlines() if x])
         if self.cfg.logPath:
             if jobId not in self.logFiles:
-                self.logFiles[jobId] = \
-                    open(os.path.join( \
-                        self.cfg.logPath, 'jobs',
-                        jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
-                log.info("Logging job %s to %s" % (jobId, self.logFiles[jobId].name))
-            logFile = self.logFiles[jobId]
-            logFile.write(message + '\n')
-            logFile.flush()
+                try:
+                    self.logFiles[jobId] = \
+                        open(os.path.join( \
+                            self.cfg.logPath, 'jobs',
+                            jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
+                except:
+                    log.error("Could not open logfile for %s" % (jobId))
+                else:
+                    log.info("Logging job %s to %s" % \
+                            (jobId, self.logFiles[jobId].name))
+            logFile = self.logFiles.get(jobId)
+            if logFile:
+                logFile.write(message + '\n')
+                logFile.flush()
         else:
             print jobId + ':', message
 
@@ -215,17 +221,9 @@ class MCPServer(object):
                 'data' : dataStr}
         return data['UUID']
 
-
     def stopSlave(self, slaveId):
         if slaveId not in self.jobSlaves:
             raise mcp_error.UnknownHost("Unknown Host: %s" % slaveId)
-
-        # clear the job log when a slave goes down
-        jobId = self.jobSlaves[slaveId]['jobId']
-        if jobId in self.logFiles:
-            # compress log file
-            util.execute("/bin/gzip %s" % self.logFiles[jobId].name)
-            del self.logFiles[jobId]
 
         # slave Id is masterId:slaveId so splitting on : gives masterId
         control = {'protocolVersion' : PROTOCOL_VERSION,
@@ -364,6 +362,15 @@ class MCPServer(object):
             job['status'] = (jobstatus.FAILED, "Job killed at user's request")
 
     def slaveOffline(self, slaveId):
+        # clear the job log when a slave goes down
+        jobId = self.jobSlaves[slaveId]['jobId']
+        if jobId in self.logFiles:
+            # compress log file
+            # DO NOT use util.execute. bombing out before finishing the stop
+            # slave process is unrecoverable!
+            os.system("/bin/gzip %s" % self.logFiles[jobId].name)
+            del self.logFiles[jobId]
+
         # only respawn job after slave is offline to avoid race conditions
         self.respawnJob(slaveId)
         self.handleKilledJobs(slaveId)
