@@ -141,7 +141,7 @@ class MCPServer(object):
     def stockSlaveSource(self):
         cfg = conarycfg.ConaryConfiguration(True)
         cc = conaryclient.ConaryClient(cfg)
-        slaveSetTrove = cc.db.findTrove(None, (SLAVE_SET_NAME, None, None))
+        slaveSetTrove = cc.db.findTrove(None, (SLAVE_SET_NAME, None, None))[0]
         for slaveName, slaveVersion, slaveFlavor in \
                 slaveSetTrove.iterTroveList(strongRefs = True):
             self.jobSlaveSource.addTrove(slaveName, slaveVersion, slaveFlavor)

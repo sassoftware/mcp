@@ -1028,7 +1028,7 @@ class McpTest(mcp_helper.MCPTest):
                 yield (trvName, trvVersion, trvFlavor)
             def __init__(x, *args, **kw):
                 x.db = x
-                x.findTrove = lambda *args, **kwargs: x
+                x.findTrove = lambda *args, **kwargs: [x]
 
         try:
             conaryclient.ConaryClient = MockClient
