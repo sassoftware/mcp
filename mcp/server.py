@@ -117,13 +117,6 @@ class MCPServer(object):
                                                 autoSubscribe = False,
                                                 timeOut = 0)
 
-        # job specific control topic will be a separate avenue to send control
-        # messages to whichever jobslave is currently serving a given job.
-        # message format will be identical to controlTopic messages
-        self.jobControlQueue = queue.MultiplexedQueue( \
-            cfg.queueHost, cfg.queuePort, namespace = cfg.namespace,
-            autoSubscribe = False)
-
     def logJob(self, jobId, message):
         message = '\n'.join([x for x in message.splitlines() if x])
         if self.cfg.logPath:
@@ -168,11 +161,6 @@ class MCPServer(object):
                                          namespace = self.cfg.namespace,
                                          autoSubscribe = False)
 
-    def appendWaitingJob(self, UUID):
-        if UUID in self.waitingJobs:
-            self.waitingJobs.remove(UUID)
-        self.waitingJobs.append(UUID)
-
     def addJob(self, version, suffix, dataStr):
         queueName = 'job:%s' % suffix
         if queueName not in self.jobQueues:
@@ -189,7 +177,7 @@ class MCPServer(object):
                                                   suffix)
         dataStr = simplejson.dumps(data)
         self.jobQueues[queueName].send(dataStr)
-        self.appendWaitingJob(UUID)
+        self.waitingJobs.append(UUID)
 
     def handleJob(self, dataStr, force = False):
         valid, data = decodeJson(dataStr)
@@ -255,27 +243,19 @@ class MCPServer(object):
                    'limit' : limit}
         self.controlTopic.send(simplejson.dumps(control))
 
-    def stopJob(self, jobId, useQueue = True):
-        # FIXME: the extra logic in here to protect against corner cases is likely crufty
+    def stopJob(self, jobId):
         if jobId not in self.jobs:
             raise mcp_error.UnknownJob('Unknown Job ID: %s' % jobId)
+
         slaveId = self.jobs[jobId]['slaveId']
+        if not slaveId:
+            self.jobs[jobId]['status'] = (jobstatus.KILLED,
+                    "Job killed at user's request")
+
         control = {'protocolVersion' : PROTOCOL_VERSION,
                    'node' : 'slaves',
                    'action' : 'stopJob',
                    'jobId' : jobId}
-        if slaveId:
-            # the slave only has one job running at a time, but the jobId
-            # is included in the control packet to ensure a race condition can't
-            # kill the wrong job.
-            if useQueue:
-                # send kill message to job specific control queue, due to the
-                # fact that the job may not be active when the stop command is
-                # sent.
-                self.jobControlQueue.send(jobId, simplejson.dumps(control))
-                return
-        # fallback. used if no slave is known, or if we weren't supposed to
-        # use a queue.
         self.controlTopic.send(simplejson.dumps(control))
 
     def clearCache(self, masterId):
@@ -313,7 +293,8 @@ class MCPServer(object):
                 if jobId and jobId not in self.jobs:
                     raise mcp_error.UnknownJob('Unknown job Id: %s' % jobId)
                 if jobId:
-                    if jobId in self.waitingJobs:
+                    killed = self.jobs[jobId]['status'][0] == jobstatus.KILLED
+                    if not killed and (jobId in self.waitingJobs):
                         ind = self.waitingJobs.index(jobId)
                         if ind:
                             statMsg = "Number %d in line for processing" % \
@@ -368,13 +349,24 @@ class MCPServer(object):
         job = self.jobs.get(jobId, {})
         jobData = job.get('data', None)
         if jobData and (job.get('status', ('', ''))[0] not in \
-                            (jobstatus.FINISHED, jobstatus.FAILED)):
+                (jobstatus.FINISHED, jobstatus.FAILED, jobstatus.KILLED)):
             log.info("Respawning Job: %s" % jobId)
             self.handleJob(jobData, force = True)
+
+    def isJobKilled(self, jobId):
+        job = self.jobs.get(jobId, {})
+        return job.get('status', ('', ''))[0] == jobstatus.KILLED
+
+    def handleKilledJobs(self, slaveId):
+        jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
+        if self.isJobKilled(jobId):
+            job = self.jobs[jobId]
+            job['status'] = (jobstatus.FAILED, "Job killed at user's request")
 
     def slaveOffline(self, slaveId):
         # only respawn job after slave is offline to avoid race conditions
         self.respawnJob(slaveId)
+        self.handleKilledJobs(slaveId)
         masterId = slaveId.split(':')[0]
         if slaveId in self.jobSlaves:
             del self.jobSlaves[slaveId]
@@ -446,17 +438,27 @@ class MCPServer(object):
                 master = self.getMaster(node.split(':')[0])
                 slaveId = data['slaveId']
                 if data['status'] != slavestatus.OFFLINE:
+                    jobId = data['jobId']
                     self.jobSlaves[slaveId] = \
                         {'status' : data['status'],
-                         'jobId': data['jobId'],
+                         'jobId': jobId,
                          'type': data['type']}
                     if slaveId not in master['slaves']:
                         master['slaves'].append(slaveId)
+                    if self.isJobKilled(jobId):
+                        # slave is associated with a jobId that needs removal
+                        self.stopSlave(slaveId)
                 else:
                     self.slaveOffline(slaveId)
             elif event == 'jobStatus':
-                slave = self.getSlave(node)
                 jobId = data['jobId']
+                slave = self.getSlave(node)
+                if self.isJobKilled(jobId):
+                    # The only exit from the killed state is to the failed
+                    # state when the job's jobslave dies
+                    slaveId = node
+                    self.stopSlave(slaveId)
+                    return
                 job = self.jobs.setdefault(jobId, \
                     {'status' : (data['status'],
                                  data['statusMessage']),
@@ -529,7 +531,6 @@ class MCPServer(object):
         self.commandQueue.disconnect()
         self.responseTopic.disconnect()
         self.controlTopic.disconnect()
-        self.jobControlQueue.disconnect()
         for name in self.jobQueues:
             self.jobQueues[name].disconnect()
         self.postQueue.disconnect()

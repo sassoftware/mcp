@@ -14,6 +14,7 @@ statuses = {
     'FINISHED' : 300,
     'FAILED'   : 301,
     'ERROR'    : 301,
+    'KILLED'   : 302,
     'NO_JOB'   : 401
     }
 

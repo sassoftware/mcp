@@ -134,7 +134,85 @@ class McpTest(mcp_helper.MCPTest):
         assert 'master' in self.mcp.jobMasters
         assert 'master:slave0' in self.mcp.jobMasters['master']['slaves']
         assert self.mcp.jobSlaves['master:slave0'] == \
-            {'status': slavestatus.IDLE, 'type': '2.0.2-1-1:x86', 'jobId': None}
+            {'status': slavestatus.IDLE, 'type': '2.0.2-1-1:x86',
+                    'jobId': None}
+
+    def testSlavehandleKilledJobs(self):
+        jobId = 'rogueJob'
+        slaveId = 'master:slave'
+        self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
+                                                'jobId' : jobId,
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.KILLED, ''),
+                                  'slaveId': slaveId}}
+        self.mcp.handleKilledJobs(slaveId)
+        self.failIf(self.mcp.jobs[jobId]['status'] != \
+                (301, "Job killed at user's request"),
+                "Job didn't transition from killed to failed")
+
+    def testStartSlaveBlacklist(self):
+        assert self.mcp.jobMasters == {}
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        jobId = self.mcp.jobs.keys()[0]
+        slaveId = 'master:slave05'
+        self.mcp.jobs[jobId]['status'] = \
+                (jobstatus.KILLED, '')
+        self.masterResponse.slaveStatus(slaveId, slavestatus.BUILDING,
+                "%s:%s" % ('2.0.2', 'x86'), jobId = jobId)
+        self.mcp.responseTopic.incoming.insert( \
+            0, self.masterResponse.response.outgoing.pop())
+        self.mcp.checkResponses()
+
+        found = False
+        while self.mcp.controlTopic.outgoing:
+            dataStr = self.mcp.controlTopic.outgoing.pop()
+            data = simplejson.loads(dataStr)
+            if data == {"node": "master", "action": "stopSlave",
+                    "slaveId": "master:slave05", "protocolVersion": 1}:
+                found = True
+        self.failIf(not found, "stopSlave not emitted when slave checked in")
+
+    def testStopSlaveBlacklist(self):
+        jobId = 'rogueJob'
+        slaveId = 'master:slave'
+        self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
+                                                'jobId' : jobId,
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.KILLED, ''),
+                                  'slaveId': slaveId}}
+
+        self.masterResponse.slaveStatus(slaveId, slavestatus.OFFLINE,
+                "%s:%s" % ('2.0.2', 'x86'), jobId = jobId)
+        self.mcp.responseTopic.incoming.insert( \
+            0, self.masterResponse.response.outgoing.pop())
+        self.mcp.checkResponses()
+
+        self.failIf(self.mcp.jobs[jobId]['status'][0] != jobstatus.FAILED,
+                "Job was not recorded as failed when slave stopped")
+
+    def testStartJobBlacklist(self):
+        assert self.mcp.jobMasters == {}
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        jobId = self.mcp.jobs.keys()[0]
+        self.mcp.jobs[jobId]['status'] = \
+                (jobstatus.KILLED, '')
+        self.slaveResponse.jobStatus(jobId, jobstatus.RUNNING, "doomed job")
+        self.mcp.responseTopic.incoming.insert( \
+            0, self.slaveResponse.response.outgoing.pop())
+        self.mcp.checkResponses()
+
+        found = False
+        while self.mcp.controlTopic.outgoing:
+            dataStr = self.mcp.controlTopic.outgoing.pop()
+            data = simplejson.loads(dataStr)
+            if data == {"node": "master", "action": "stopSlave", "slaveId":
+                    "master:slave", "protocolVersion": 1}:
+                found = True
+        self.failIf(not found, "stopSlave not emitted when job checked in")
 
     def testCommandResponse(self):
         build = self.getJsonBuild()
@@ -250,7 +328,7 @@ class McpTest(mcp_helper.MCPTest):
         # make sure job logfile is compressed
         self.failUnless(os.path.exists(self.mcpBasePath + '/logfile.gz'))
 
-    def testStopJobNoQueue(self):
+    def testStopJob(self):
         jobId = 'rogueJob'
         slaveId = 'master:slave'
         self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
@@ -266,21 +344,14 @@ class McpTest(mcp_helper.MCPTest):
         self.checkValue(control, 'action', 'stopJob')
         self.checkValue(control, 'jobId', jobId)
 
-    def testStopJobQueue(self):
+    def testStopJobBlacklist(self):
         jobId = 'rogueJob'
-        slaveId = 'master:slave'
-        self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
-                                                'jobId' : jobId,
-                                                'type' : '1.0.4-12-3:x86'}}
         self.mcp.jobs = {jobId : {'data': '',
-                                  'status': (100, ''),
-                                  'slaveId': slaveId}}
+                                  'status': (jobstatus.WAITING, ''),
+                                  'slaveId': None}}
         self.mcp.stopJob(jobId)
-        control = simplejson.loads(self.mcp.jobControlQueue.outgoing.pop())
-        self.checkValue(control, 'node', 'slaves')
-        self.checkValue(control, 'action', 'stopJob')
-        self.checkValue(control, 'jobId', jobId)
-
+        self.failIf(self.mcp.jobs[jobId]['status'] != (jobstatus.KILLED,
+            "Job killed at user's request"), "Expected job killed message")
 
     def testSetSlaveLimitHost(self):
 
@@ -315,7 +386,7 @@ class McpTest(mcp_helper.MCPTest):
                                             'status' : jobstatus.RUNNING,
                                             'slaveId' : 'master:slave'}}
         self.mcp.stopJob('test.rpath.local:build-22')
-        control = simplejson.loads(self.mcp.jobControlQueue.outgoing.pop())
+        control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
         self.checkValue(control, 'node', 'slaves')
         self.checkValue(control, 'action', 'stopJob')
         self.checkValue(control, 'jobId', 'test.rpath.local:build-22')
@@ -921,6 +992,26 @@ class McpTest(mcp_helper.MCPTest):
         self.failIf(statusMessage != "starting",
                 'Status message was masked by waiting logic')
 
+    def testWaitingJobKilled(self):
+        jobId = 'test.rpath.local:build-0'
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.failIf(self.mcp.waitingJobs != [jobId],
+                "Job was not put into waitingJobs on submission")
+        self.mcp.jobs[jobId]['status'] = (jobstatus.KILLED, "dead test job")
+        self.client.jobStatus(jobId)
+        self.mcp.commandQueue.incoming = self.client.command.outgoing
+        self.client.command.outgoing = []
+        self.mcp.postQueue.outgoing = []
+        self.mcp.checkIncomingCommands()
+        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        self.failIf(error, "unexpected error checking jobStatus: %s" % res)
+        status, statusMessage = res
+        self.failIf(status != jobstatus.KILLED,
+                "Expected status %d, but got %d" % (jobstatus.KILLED, status))
+        self.failIf(statusMessage != "dead test job",
+                "expected dead job, not a place in line")
+
     def testStockSlaveSource(self):
         # mock out the conaryclient object to catch the repos call
         trvName = 'group-core'
@@ -945,17 +1036,6 @@ class McpTest(mcp_helper.MCPTest):
         finally:
             conaryclient.ConaryClient = ConaryClient
             self.mcp.slaveSource = trovesource.SimpleTroveSource()
-
-    def testAppendWaitingJob(self):
-        buildId = 'test.rpath.local-build-1'
-        self.mcp.waitingJobs = []
-        self.mcp.appendWaitingJob(buildId)
-        self.failIf(self.mcp.waitingJobs != [buildId],
-                "Unexpected behavior for  append waiting jobs")
-
-        self.mcp.appendWaitingJob(buildId)
-        self.failIf(self.mcp.waitingJobs != [buildId],
-                "Unexpected behavior for  append waiting jobs")
 
 
 if __name__ == "__main__":
