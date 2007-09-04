@@ -352,6 +352,8 @@ class MCPServer(object):
                 (jobstatus.FINISHED, jobstatus.FAILED, jobstatus.KILLED)):
             log.info("Respawning Job: %s" % jobId)
             self.handleJob(jobData, force = True)
+        elif jobId in self.waitingJobs:
+            self.waitingJobs.remove(jobId)
 
     def isJobKilled(self, jobId):
         job = self.jobs.get(jobId, {})
@@ -466,6 +468,8 @@ class MCPServer(object):
                     # The only exit from the killed state is to the failed
                     # state when the job's jobslave dies
                     slaveId = node
+                    slave['jobId'] = jobId
+                    self.jobs[jobId]['slaveId'] = slaveId
                     self.stopSlave(slaveId)
                     return
                 job = self.jobs.setdefault(jobId, \

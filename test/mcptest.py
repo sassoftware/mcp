@@ -1016,6 +1016,40 @@ class McpTest(mcp_helper.MCPTest):
         self.failIf(statusMessage != "dead test job",
                 "expected dead job, not a place in line")
 
+    def testJobKillSlaveAssoc(self):
+        jobId = 'test.rpath.local:build-0'
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.failIf(self.mcp.waitingJobs != [jobId],
+                "Job was not put into waitingJobs on submission")
+        self.mcp.jobs[jobId]['status'] = (jobstatus.KILLED, "dead test job")
+        self.slaveResponse.jobStatus(jobId, jobstatus.RUNNING, 'started')
+        self.mcp.responseTopic.incoming.append( \
+                self.slaveResponse.response.outgoing.pop())
+        self.mcp.checkResponses()
+        slaveId = self.mcp.jobs[jobId]['slaveId']
+        self.failIf(slaveId is None,
+                "slave was not associated with job in kill scenario")
+        newJobId = self.mcp.jobSlaves[slaveId]['jobId']
+        self.failIf(jobId != newJobId, "job was not assigned to slave in kill scenario")
+
+    def testJobKillWaitingEffect(self):
+        jobId = 'test.rpath.local:build-0'
+        slaveId = 'master:slave'
+        self.submitBuild()
+        self.mcp.checkIncomingCommands()
+        self.failIf(self.mcp.waitingJobs != [jobId],
+                "Job was not put into waitingJobs on submission")
+        self.mcp.jobs[jobId]['status'] = (jobstatus.KILLED, "dead test job")
+        self.mcp.getSlave(slaveId)
+        self.mcp.jobs[jobId]['slaveId'] = slaveId
+        self.mcp.jobSlaves[slaveId]['jobId'] = jobId
+        self.masterResponse.slaveStatus(slaveId, slavestatus.OFFLINE, 'dummy')
+        self.mcp.responseTopic.incoming.append(self.masterResponse.response.outgoing.pop())
+        self.mcp.checkResponses()
+        self.failIf(self.mcp.waitingJobs == [jobId],
+                "Job was not removed from waiting queue on slave stop")
+
     def testStockSlaveSource(self):
         # mock out the conaryclient object to catch the repos call
         trvName = 'group-core'
