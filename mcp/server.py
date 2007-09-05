@@ -348,12 +348,12 @@ class MCPServer(object):
         jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
         job = self.jobs.get(jobId, {})
         jobData = job.get('data', None)
+        if jobId in self.waitingJobs:
+            self.waitingJobs.remove(jobId)
         if jobData and (job.get('status', ('', ''))[0] not in \
                 (jobstatus.FINISHED, jobstatus.FAILED, jobstatus.KILLED)):
             log.info("Respawning Job: %s" % jobId)
             self.handleJob(jobData, force = True)
-        elif jobId in self.waitingJobs:
-            self.waitingJobs.remove(jobId)
 
     def isJobKilled(self, jobId):
         job = self.jobs.get(jobId, {})
@@ -366,6 +366,8 @@ class MCPServer(object):
             job['status'] = (jobstatus.FAILED, "Job killed at user's request")
 
     def slaveOffline(self, slaveId):
+        if slaveId not in self.jobSlaves:
+            return
         # clear the job log when a slave goes down
         jobId = self.jobSlaves[slaveId]['jobId']
         if jobId in self.logFiles:
