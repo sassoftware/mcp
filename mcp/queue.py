@@ -95,7 +95,8 @@ class Queue(object):
         self.lock.acquire()
         try:
             oldLimit = self.queueLimit
-            self.queueLimit = limit
+            count = len(self.inbound)
+            self.queueLimit = max(0, limit - count)
             if (self.queueLimit == 0) and (oldLimit != 0):
                 self._unsubscribe()
             else:

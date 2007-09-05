@@ -224,6 +224,29 @@ class QueueTest(mcp_helper.MCPTest):
         self.failIf(q.subscribed,
                     "setting a queueLimit of 1 did not trigger an unsubscribe")
 
+    def testSetLimitSlots(self):
+        q = queue.Queue('dummyhost', 12345, dest = 'limittest',
+                        namespace = 'test')
+        # place one item already in the queue
+        q.inbound = ['1']
+        q.setLimit(3)
+        self.failIf(q.queueLimit != 2,
+                "current inbound total did not affect queue limit")
+
+    def testLimitMet(self):
+        q = queue.Queue('dummyhost', 12345, dest = 'limittest',
+                        namespace = 'test')
+        self.unsubscribeCalled = False
+        def MockUnsubscribe():
+            self.unsubscribeCalled = True
+        q._unsubscribe = MockUnsubscribe
+
+        q.setLimit(0)
+        q.receive('rejected message')
+        assert q.queueLimit == 0
+        self.failIf(not self.unsubscribeCalled,
+                    "queue did not re-call unsubscribe after an extra message")
+
     def testMultiplexedDest(self):
         q = queue.MultiplexedQueue('dummyhost', 12345,
                                    dest = ['first', 'second'],
