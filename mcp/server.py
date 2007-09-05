@@ -21,6 +21,7 @@ log = logging
 
 from mcp import queue
 from mcp import mcp_error
+from mcp import mcp_log
 from mcp import config
 from mcp import jobstatus
 from mcp import slavestatus
@@ -95,7 +96,7 @@ class MCPServer(object):
 
         self.cfg = cfg
         if cfg.logPath:
-            logging.basicConfig(level=LOG_LEVEL,
+            mcp_log.addRootLogger(level=LOG_LEVEL,
                     format='%(asctime)s %(levelname)s %(message)s',
                     filename= os.path.join(cfg.logPath, 'mcp.log'),
                     filemode='a')
