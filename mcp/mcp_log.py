@@ -23,3 +23,4 @@ def addRootLogger(level = None, format = None, filename = None,
     log.addHandler(hdlr)
     if level:
         log.setLevel(level)
+    signal.signal(signal.SIGHUP, signalHandler)
