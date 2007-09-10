@@ -367,10 +367,8 @@ class MCPServer(object):
             job['status'] = (jobstatus.FAILED, "Job killed at user's request")
 
     def slaveOffline(self, slaveId):
-        if slaveId not in self.jobSlaves:
-            return
         # clear the job log when a slave goes down
-        jobId = self.jobSlaves[slaveId]['jobId']
+        jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
         if jobId in self.logFiles:
             # compress log file
             # DO NOT use util.execute. bombing out before finishing the stop
@@ -436,8 +434,13 @@ class MCPServer(object):
             elif event == 'masterStatus':
                 oldInfo = self.getMaster(node)
                 oldSlaves = oldInfo.get('slaves', [])
+                # remove slaves from the master's list that aren't present
                 for slaveId in [x for x in oldSlaves \
                                     if x not in data['slaves']]:
+                    self.slaveOffline(slaveId)
+                # remove slaves from jobslave list that aren't present
+                for slaveId in [x for x in self.jobSlaves if \
+                        x.split(':')[0] == node and x not in data['slaves']]:
                     self.slaveOffline(slaveId)
                 # ensure we record each slave. useful when we just started up
                 # and don't know of the slave yet.

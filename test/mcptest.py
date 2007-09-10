@@ -765,6 +765,45 @@ class McpTest(mcp_helper.MCPTest):
         self.failIf(not self.mcp.jobMasters[masterId]['slaves'],
                     "Slave was not assciated with master")
 
+    def testMasterStatus3(self):
+        masterId = 'testmaster'
+        slaveId = masterId + ':slave'
+        self.mcp.jobMasters = {masterId: {'limit' : 1, 'arch': 'x86',
+                                          'slaves' : [slaveId]}}
+        self.mcp.handleResponse({'node' : masterId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'masterStatus',
+                                 'arch' : 'x86',
+                                 'limit' : 1,
+                                 'slaves' : []})
+
+        self.failIf(self.mcp.jobSlaves,
+                    "Slave was not removed when master reported it missing")
+        self.failIf(self.mcp.jobMasters[masterId]['slaves'],
+                    "Slave was not disassociated from master")
+
+    def testMasterStatus4(self):
+        # have an invalid slave entry, not linked to the jobMaster. send a
+        # status message indicating it doesn't exist
+        masterId = 'testmaster'
+        slaveId = masterId + ':slave'
+        self.mcp.jobMasters = {masterId: {'limit' : 1, 'arch': 'x86',
+                                          'slaves' : []}}
+        self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.IDLE,
+                                         'type' : '3.0.0-1-1:x86',
+                                         'jobId' : None}}
+        self.mcp.handleResponse({'node' : masterId,
+                                 'protocolVersion' : 1,
+                                 'event' : 'masterStatus',
+                                 'arch' : 'x86',
+                                 'limit' : 1,
+                                 'slaves' : []})
+
+        self.failIf(self.mcp.jobSlaves,
+                    "Slave was not removed when master reported it missing")
+        self.failIf(self.mcp.jobMasters[masterId]['slaves'],
+                    "Slave was not disassociated from master")
+
     def testCommandJSVersion(self):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
