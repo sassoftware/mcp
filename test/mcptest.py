@@ -1090,28 +1090,43 @@ class McpTest(mcp_helper.MCPTest):
                 "Job was not removed from waiting queue on slave stop")
 
     def testStockSlaveSource(self):
-        # mock out the conaryclient object to catch the repos call
-        trvName = 'group-core'
-        trvVersion = versions.VersionFromString( \
-                '/products.rpath.com@rpath:js/4.0.0-1-1')
-        trvFlavor = deps.parseFlavor('')
-        ConaryClient = conaryclient.ConaryClient
+        '''Population of jobslave stock'''
+        ## mock out the conaryclient object to catch the repos call
+        # NVF for jobslave-set we eventually return
+        slaveset = ('group-jobslave-set', versions.VersionFromString( \
+                '/products.rpath.com@rpath:js/12345-1-1'), \
+                deps.parseFlavor(''))
+        slavelabel = slaveset[1].trailingLabel().asString()
+        # NVF for jobslave we eventually return
+        jobslave = ('group-jobslave', versions.VersionFromString( \
+                '/products.rpath.com@rpath:js/4.0.0-1-1'), \
+                deps.parseFlavor(''))
+
+        class MockSource(object):
+            # Mocks the source used to look up the jobslave set
+            def findTroves(self, query, **kwargs):
+                assert len(query) == 1
+                assert query[0][1] == slavelabel + '/12345'
+                return {query[0]: [slaveset]}
         class MockClient(object):
             def iterTroveList(x, *args, **kwargs):
-                yield (trvName, trvVersion, trvFlavor)
+                yield jobslave
             def __init__(x, *args, **kw):
                 x.db = x
                 x.findTrove = lambda *args, **kwargs: [(1, 2, 3)]
                 x.getRepos = lambda: x
                 x.getTrove = lambda *args, **kwargs: x
+                x.getSearchSource = lambda *args, **kwargs: MockSource()
 
+        ConaryClient = conaryclient.ConaryClient
         try:
             conaryclient.ConaryClient = MockClient
+
+            self.mcp.cfg.slaveTroveLabel = slavelabel
             self.mcp.stockSlaveSource()
             res = self.mcp.jobSlaveSource.findTrove( \
-                    None, (trvName, trvVersion, trvFlavor))
-            ref = [(trvName, trvVersion, trvFlavor)]
-            self.failIf(ref != res, "expected slaveSource to be stocked")
+                    None, jobslave)
+            self.failIf([jobslave] != res, "expected slaveSource to be stocked")
         finally:
             conaryclient.ConaryClient = ConaryClient
             self.mcp.slaveSource = trovesource.SimpleTroveSource()
