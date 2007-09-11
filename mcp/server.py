@@ -117,6 +117,9 @@ class MCPServer(object):
                                                 autoSubscribe = False,
                                                 timeOut = 0)
 
+        if not self.cfg.slaveTroveLabel:
+            self.cfg.slaveTroveLabel = self.getTopGroupLabel()
+
     def logJob(self, jobId, message):
         message = '\n'.join([x for x in message.splitlines() if x])
         if self.cfg.logPath:
@@ -138,15 +141,53 @@ class MCPServer(object):
         else:
             print jobId + ':', message
 
-    def stockSlaveSource(self):
+    def getTopGroupLabel(self):
+        '''Get the label on which the appliance's top-level group resides.'''
+        try:
+            # Try getting the top-level group where distro-release detects it
+            group = open('/etc/sysconfig/appliance-group').read().strip()
+            assert group
+        except:
+            # The mcp itself is probably the best bet if
+            # a top-level group was not found on startup
+            group = 'mcp'
+
+        # Note that we instantiate a separate client that DOES use system
+        # configs, while the stockSlaveSource client DOES NOT use them.
         cfg = conarycfg.ConaryConfiguration(True)
         cc = conaryclient.ConaryClient(cfg)
-        NVF = cc.db.findTrove(None, (SLAVE_SET_NAME, None, None))[0]
+        n, v, f = cc.db.findTrove(None, (group, None, None))[0]
+        return v.trailingLabel().asString()
+
+    def stockSlaveSource(self):
+        '''Populate our local trove source from a compatible remote jobslave set'''
+
+        cfg = conarycfg.ConaryConfiguration(False)
+        cc = conaryclient.ConaryClient(cfg)
         nc = cc.getRepos()
-        slaveSetTrove = nc.getTrove(NVF[0], NVF[1], NVF[2], withFiles = False)
-        for slaveName, slaveVersion, slaveFlavor in \
-                slaveSetTrove.iterTroveList(strongRefs = True):
-            self.jobSlaveSource.addTrove(slaveName, slaveVersion, slaveFlavor)
+        search = cc.getSearchSource(flavor=0)
+
+        # Get latest jobslave set matching 'version'
+        query_version = self.cfg.slaveTroveLabel
+        if self.cfg.slaveSetVersion:
+            query_version += '/' + self.cfg.slaveSetVersion
+        else:
+            log.info('Running without an explicit jobslave set version. ' \
+                'Using latest on label.')
+        troveSpec = (SLAVE_SET_NAME, query_version, None)
+        log.debug('Jobslave set query: %s' % repr(troveSpec))
+
+        try:
+            results = search.findTroves([troveSpec], bestFlavor=False)[troveSpec]
+        except TroveNotFound:
+            log.error('Could not find an appropriate jobslave set')
+            raise
+        latest = max([x[1] for x in results])
+        troveSpec = [x for x in results if x[1] == latest][-1]
+
+        slaveSetTrove = nc.getTrove(troveSpec[0], troveSpec[1], troveSpec[2], withFiles=False)
+        for slaveSpec in slaveSetTrove.iterTroveList(strongRefs = True):
+            self.jobSlaveSource.addTrove(*slaveSpec)
 
     def getVersion(self, version):
         try:
@@ -521,8 +562,8 @@ class MCPServer(object):
         self.running = True
         self.requestMasterStatus()
         self.requestSlaveStatus()
-        self.stockSlaveSource()
         try:
+            self.stockSlaveSource()
             lastDump = time.time()
             while self.running:
                 self.checkIncomingCommands()

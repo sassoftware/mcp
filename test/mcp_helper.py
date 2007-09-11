@@ -136,7 +136,8 @@ class MCPTestMixin:
         cfg.namespace = 'test'
 
         cfg.slaveTroveName = 'group-core'
-        cfg.slaveTrpveLabel = 'conary.rpath.com@rpl:1'
+        cfg.slaveTroveLabel = 'products.rpath.com@rpath:js'
+        cfg.slaveSetVersion = '12345'
         return cfg
 
     def setUp(self):
