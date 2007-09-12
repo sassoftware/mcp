@@ -95,7 +95,7 @@ class McpTest(mcp_helper.MCPTest):
         data = simplejson.loads(dataStr)
         jobSlaveNVF = data['jobSlaveNVF']
         nvf = cmdline.parseTroveSpec(jobSlaveNVF)
-        version = nvf[1].split('/')[1]
+        version = str(versions.VersionFromString(nvf[1]).trailingRevision())
         data = {}
         slaveId = '%s:slave%d' % (self.masterResponse.node, self.slaveId)
         self.slaveId += 1
@@ -136,9 +136,9 @@ class McpTest(mcp_helper.MCPTest):
 
         assert 'master' in self.mcp.jobMasters
         assert 'master:slave0' in self.mcp.jobMasters['master']['slaves']
-        assert self.mcp.jobSlaves['master:slave0'] == \
+        self.assertEquals(self.mcp.jobSlaves['master:slave0'],
             {'status': slavestatus.IDLE, 'type': '2.0.2-1-1:x86',
-                    'jobId': None}
+                    'jobId': None})
 
     def testSlavehandleKilledJobs(self):
         jobId = 'rogueJob'
@@ -525,13 +525,11 @@ class McpTest(mcp_helper.MCPTest):
 
     def testGetVersion(self):
         # mock out the conaryclient object to catch the repos call
-        trvName = 'group-core'
-        trvVersion = versions.VersionFromString('/products.rpath.com@rpath:js/4.0.0-1-1')
-        trvFlavor = deps.parseFlavor('')
-        self.mcp.jobSlaveSource.addTrove(trvName, trvVersion, trvFlavor)
+        self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
+        self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
         try:
             res = server.MCPServer.getVersion(self.mcp, '')
-            ref = (trvName, trvVersion, trvFlavor)
+            ref = mcp_helper.SlaveBits.trove
             self.failUnlessEqual(ref, res)
         finally:
             self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
@@ -569,6 +567,7 @@ class McpTest(mcp_helper.MCPTest):
         # test a bogus jsversion to account for proper mcp reaction
         # actual version doesn't matter since the slaveSource is empty
         mcp = server.MCPServer(self.cfg)
+        mcp.slaveInstallPath = set([mcp_helper.SlaveBits.label])
         mcp.handleJob(simplejson.dumps({'type': 'build',
                                              'UUID': UUID,
                                              'troveFlavor': 'x86',
@@ -1098,9 +1097,7 @@ class McpTest(mcp_helper.MCPTest):
                 deps.parseFlavor(''))
         slavelabel = slaveset[1].trailingLabel().asString()
         # NVF for jobslave we eventually return
-        jobslave = ('group-jobslave', versions.VersionFromString( \
-                '/products.rpath.com@rpath:js/4.0.0-1-1'), \
-                deps.parseFlavor(''))
+        jobslave = mcp_helper.SlaveBits.trove
 
         class MockSource(object):
             # Mocks the source used to look up the jobslave set

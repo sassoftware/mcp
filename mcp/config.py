@@ -17,6 +17,5 @@ class MCPConfig(conarycfg.ConfigFile):
     queuePort = (cfgtypes.CfgInt, 61613)
     namespace = 'mcp'
 
-    slaveTroveLabel = None
     slaveTroveName = 'group-jobslave'
     slaveSetVersion = None

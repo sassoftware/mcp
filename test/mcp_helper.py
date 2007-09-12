@@ -17,6 +17,21 @@ import simplejson
 from conary.conaryclient import cmdline
 from conary import versions
 from conary.lib import util
+from conary.deps import deps
+
+class SlaveBits:
+    label = 'products.rpath.com@rpath:js'
+    version = '3.0.0'
+    revision = version + '-1-1'
+
+    branch = '/' + label
+    vbranch = branch + '/' + version
+    rbranch = branch + '/' + revision
+
+    labelObject = versions.Label(label)
+    versionObject = versions.VersionFromString(rbranch)
+
+    trove = ('group-jobslave', versionObject, deps.parseFlavor(''))
 
 class DummyConnection(object):
     def __init__(self, *args, **kwargs):
@@ -113,17 +128,18 @@ class ThreadedMCP(server.MCPServer, threading.Thread):
         threading.Thread.__init__(self)
         server.MCPServer.__init__(self, *args, **kwargs)
 
-    def getVersion(self, version):
-        if not version:
-            return ('dummy', versions.VersionFromString( \
-                    '/products.rpath.com@rpath:js-1-devel/3.0.0-1-1'), '')
-        if '-' not in version:
-            version += '-1-1'
-        nvf = cmdline.parseTroveSpec('%s=/%s/%s' % \
-                        (self.cfg.slaveTroveName, self.cfg.slaveTroveLabel,
-                         version))
-        return nvf[0], versions.VersionFromString(nvf[1]), \
-            (nvf[2] and nvf[2] or '')
+    def getVersion(self, version=None):
+        n = self.cfg.slaveTroveName
+        v = SlaveBits.branch
+        if version:
+            v += '/' + version + '-1-1'
+        else:
+            v += '/' + SlaveBits.revision
+        v = versions.VersionFromString(v)
+        f = ''
+        return n, v, f
+
+    getTopGroupLabel = lambda self: SlaveBits.label
 
 class MCPTestMixin:
     def getMCPConfig(self):
@@ -135,8 +151,7 @@ class MCPTestMixin:
         cfg.queuePort = 12345
         cfg.namespace = 'test'
 
-        cfg.slaveTroveName = 'group-core'
-        cfg.slaveTroveLabel = 'products.rpath.com@rpath:js'
+        cfg.slaveTroveName = 'group-jobslave'
         cfg.slaveSetVersion = '12345'
         return cfg
 
@@ -157,6 +172,8 @@ class MCPTestMixin:
         self.mcpClient = client.MCPClient(self.mcpClientCfg)
         self.mcpClient.post.timeOut = 0
         self.buildCount = 0
+
+        self.mcp.slaveInstallPath = set([SlaveBits.label])
 
         self.masterResponse = response.MCPResponse('master', self.mcpClientCfg)
         self.slaveResponse = response.MCPResponse('master:slave',

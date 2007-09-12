@@ -29,7 +29,7 @@ import traceback
 
 PROTOCOL_VERSION = 1
 
-LOG_LEVEL = logging.INFO
+LOG_LEVEL = logging.DEBUG
 dumpEvery = 10
 
 SLAVE_SET_NAME = 'group-jobslave-set'
@@ -92,7 +92,9 @@ class MCPServer(object):
         self.jobMasters = {}
         self.logFiles = {}
 
+        # jobslave selection bits
         self.jobSlaveSource = trovesource.SimpleTroveSource()
+        self.slaveInstallPath = set()
 
         self.cfg = cfg
         if cfg.logPath:
@@ -117,9 +119,6 @@ class MCPServer(object):
         self.postQueue = queue.MultiplexedQueue(cfg.queueHost, cfg.queuePort,
                                                 autoSubscribe = False,
                                                 timeOut = 0)
-
-        if not self.cfg.slaveTroveLabel:
-            self.cfg.slaveTroveLabel = self.getTopGroupLabel()
 
     def logJob(self, jobId, message):
         message = '\n'.join([x for x in message.splitlines() if x])
@@ -169,7 +168,7 @@ class MCPServer(object):
         search = cc.getSearchSource(flavor=0)
 
         # Get latest jobslave set matching 'version'
-        query_version = self.cfg.slaveTroveLabel
+        query_version = self.getTopGroupLabel()
         if self.cfg.slaveSetVersion:
             query_version += '/' + self.cfg.slaveSetVersion
         else:
@@ -185,24 +184,43 @@ class MCPServer(object):
             raise
         latest = max([x[1] for x in results])
         troveSpec = [x for x in results if x[1] == latest][-1]
+        log.debug('Using jobslave set %s=%s[%s]' % (troveSpec[0],
+            str(troveSpec[1]), str(troveSpec[2])))
 
         slaveSetTrove = nc.getTrove(troveSpec[0], troveSpec[1], troveSpec[2], withFiles=False)
         for slaveSpec in slaveSetTrove.iterTroveList(strongRefs = True):
+            log.debug('Adding jobslave %s=%s[%s' % (slaveSpec[0], 
+                str(slaveSpec[1]), str(slaveSpec[2])))
             self.jobSlaveSource.addTrove(*slaveSpec)
 
-    def getVersion(self, version):
-        try:
-            l = version and (self.cfg.slaveTroveLabel + '/' + version) \
-                or self.cfg.slaveTroveLabel
-            troves = self.jobSlaveSource.findTrove( \
-                None, (self.cfg.slaveTroveName, l, None))
-        except TroveNotFound:
-            return []
-        return sorted(troves)[-1]
+            # Add slave to install path for later retrieval
+            self.slaveInstallPath.add(slaveSpec[1].trailingLabel().asString())
 
-    def getTrailingRevision(self, version):
-        NVF = self.getVersion(version)
-        return NVF and str(NVF[1].trailingRevision()) or ''
+    def getVersion(self, version=None):
+        troves = []
+        for label in self.slaveInstallPath:
+            if version:
+                label += '/' + version
+            try:
+                troves = self.jobSlaveSource.findTrove( \
+                    None, (self.cfg.slaveTroveName, label, None))
+            except TroveNotFound:
+                continue
+            if troves:
+                break
+
+        if not troves:
+            if version:
+                # If we couldn't find a given version, try the latest
+                log.error( \
+                    'Could not find jobslave version %s, trying latest' \
+                        % version)
+                return self.getVersion()
+            else:
+                log.error('Could not find jobslave (any version)')
+                return []
+
+        return sorted(troves)[-1]
 
     def addJobQueue(self, suffix):
         jobName = 'job:%s' % suffix
@@ -222,9 +240,8 @@ class MCPServer(object):
 
         UUID = data['UUID']
         log.info('Placing %s on %s' % (UUID, queueName))
-        data['jobSlaveNVF'] = '%s=%s/%s[is: %s]' % (self.cfg.slaveTroveName,
-                                          self.cfg.slaveTroveLabel, version,
-                                                  suffix)
+        data['jobSlaveNVF'] = '%s=%s[is: %s]' % (version[0],
+                                          str(version[1]), suffix)
         dataStr = simplejson.dumps(data)
         self.jobQueues[queueName].send(dataStr)
         self.waitingJobs.append(UUID)
@@ -242,27 +259,25 @@ class MCPServer(object):
         type = data['type']
         version = ''
         if type == 'build':
-            version = \
-                self.getTrailingRevision(data['data']['jsversion'])
+            slave = self.getVersion(data['data']['jsversion'])
             suffix = getSuffix(data['troveFlavor'])
         elif type == 'cook':
-            version = self.getTrailingRevision(version = '')
+            slave = self.getVersion()
             suffix = getSuffix(data['data']['arch'])
         else:
             raise mcp_error.UnknownJobType('Unknown job type: %s' % type)
-        if version:
+        if slave:
             self.jobs[data['UUID']] = \
                 {'status' : (jobstatus.WAITING, 'Waiting to be processed'),
                 'slaveId' : None,
                 'data' : dataStr}
-            self.addJob(version, suffix, dataStr)
+            self.addJob(slave, suffix, dataStr)
         else:
             self.jobs[data['UUID']] = \
                     {'status' : (jobstatus.FAILED,
-                        "Unknown Jobslave Version '%s'" % \
-                                data['data']['jsversion']),
-                'slaveId' : None,
-                'data' : dataStr}
+                        "Unable to find suitable jobslave"),
+                    'slaveId' : None,
+                    'data' : dataStr}
         return data['UUID']
 
     def stopSlave(self, slaveId):
@@ -319,7 +334,7 @@ class MCPServer(object):
             if data['action'] == 'submitJob':
                 return self.handleJob(data['data'])
             elif data['action'] == 'getJSVersion':
-                return self.getTrailingRevision(version = '').split('-')[0]
+                return self.getVersion()[1].trailingRevision().getVersion()
             elif data['action'] == 'nodeStatus':
                 # this casting protects the jobMasters data structure, since we
                 # will be modifying it. if the data must be changed radically,
