@@ -141,7 +141,7 @@ class MCPServer(object):
         else:
             print jobId + ':', message
 
-    def getTopGroupLabel(self):
+    def getTopGroupLabel(self, cc):
         '''Get the label on which the appliance's top-level group resides.'''
         try:
             # Try getting the top-level group where distro-release detects it
@@ -152,23 +152,19 @@ class MCPServer(object):
             # a top-level group was not found on startup
             group = 'mcp'
 
-        # Note that we instantiate a separate client that DOES use system
-        # configs, while the stockSlaveSource client DOES NOT use them.
-        cfg = conarycfg.ConaryConfiguration(True)
-        cc = conaryclient.ConaryClient(cfg)
         n, v, f = cc.db.findTrove(None, (group, None, None))[0]
         return v.trailingLabel().asString()
 
     def stockSlaveSource(self):
         '''Populate our local trove source from a compatible remote jobslave set'''
 
-        cfg = conarycfg.ConaryConfiguration(False)
+        cfg = conarycfg.ConaryConfiguration(True)
         cc = conaryclient.ConaryClient(cfg)
         nc = cc.getRepos()
         search = cc.getSearchSource(flavor=0)
 
         # Get latest jobslave set matching 'version'
-        query_version = self.getTopGroupLabel()
+        query_version = self.getTopGroupLabel(cc)
         if self.cfg.slaveSetVersion:
             query_version += '/' + self.cfg.slaveSetVersion
         else:

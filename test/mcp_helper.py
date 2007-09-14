@@ -139,7 +139,7 @@ class ThreadedMCP(server.MCPServer, threading.Thread):
         f = ''
         return n, v, f
 
-    getTopGroupLabel = lambda self: SlaveBits.label
+    getTopGroupLabel = lambda self, cc: SlaveBits.label
 
 class MCPTestMixin:
     def getMCPConfig(self):
