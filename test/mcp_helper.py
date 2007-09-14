@@ -139,8 +139,6 @@ class ThreadedMCP(server.MCPServer, threading.Thread):
         f = ''
         return n, v, f
 
-    getTopGroupLabel = lambda self, cc: SlaveBits.label
-
 class MCPTestMixin:
     def getMCPConfig(self):
         cfg = config.MCPConfig()
@@ -153,6 +151,7 @@ class MCPTestMixin:
 
         cfg.slaveTroveName = 'group-jobslave'
         cfg.slaveSetVersion = '12345'
+        cfg.slaveSetLabel = SlaveBits.label
         return cfg
 
     def setUp(self):

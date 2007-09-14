@@ -19,3 +19,4 @@ class MCPConfig(conarycfg.ConfigFile):
 
     slaveTroveName = 'group-jobslave'
     slaveSetVersion = None
+    slaveSetLabel = None

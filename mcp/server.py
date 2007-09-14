@@ -29,7 +29,7 @@ import traceback
 
 PROTOCOL_VERSION = 1
 
-LOG_LEVEL = logging.DEBUG
+LOG_LEVEL = logging.INFO
 dumpEvery = 10
 
 SLAVE_SET_NAME = 'group-jobslave-set'
@@ -143,6 +143,8 @@ class MCPServer(object):
 
     def getTopGroupLabel(self, cc):
         '''Get the label on which the appliance's top-level group resides.'''
+        if self.cfg.slaveSetLabel:
+            return self.cfg.slaveSetLabel
         try:
             # Try getting the top-level group where distro-release detects it
             group = open('/etc/sysconfig/appliance-group').read().strip()
