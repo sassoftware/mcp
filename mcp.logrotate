@@ -1,0 +1,11 @@
+/var/log/rbuilder/mcp.log {
+    missingok
+    notifempty
+    compress
+    compresscmd /usr/bin/bzip2
+    compressext .bz2
+    size 50M
+    postrotate
+                    kill -HUP `cat /var/run/mcp.pid`
+    endscript
+}
