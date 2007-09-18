@@ -8,6 +8,7 @@
 import testsuite
 testsuite.setup()
 import simplejson
+import socket
 import StringIO
 import time
 
@@ -1172,6 +1173,83 @@ class McpTest(mcp_helper.MCPTest):
         finally:
             self.mcp.cfg.logPath = savedLogPath
             util.rmtree(tmpDir, ignore_errors = True)
+
+    def testLocalDebug(self):
+        DEBUG_PATH = server.DEBUG_PATH
+        # make sure we don't trigger anything in epdb at all.
+        class FakeEpdbModule(object):
+            def __init__(x):
+                x.st_called = False
+            def st(x, cond = ''):
+                x.st_called = True
+        epdbModule = server.epdb
+        tmpDir = tempfile.mkdtemp()
+        try:
+            server.epdb = FakeEpdbModule()
+            server.DEBUG_PATH = tmpDir
+            self.mcp.checkDebug()
+            self.failIf(not server.epdb.st_called,
+                    "Expected epdb.st to have been called")
+        finally:
+            util.rmtree(tmpDir)
+            server.DEBUG_PATH = DEBUG_PATH
+            server.epdb = epdbModule
+
+    def testRemoteDebug(self):
+        DEBUG_PATH = server.DEBUG_PATH
+        # make sure we don't trigger anything in epdb at all.
+        class FakeEpdbModule(object):
+            def __init__(x):
+                x.serve_called = False
+            def serve(x, cond = ''):
+                x.serve_called = True
+        epdbModule = server.epdb
+        tmpDir = tempfile.mkdtemp()
+        stdOut = os.dup(sys.stdout.fileno())
+        try:
+            devNull = os.open(os.devnull, os.W_OK)
+            os.dup2(devNull, sys.stdout.fileno())
+            os.close(devNull)
+            server.epdb = FakeEpdbModule()
+            server.DEBUG_PATH = tmpDir
+            self.mcp.checkDebug()
+            self.failIf(not server.epdb.serve_called,
+                    "Expected epdb.serve to have been called")
+        finally:
+            os.dup2(stdOut, sys.stdout.fileno())
+            os.close(stdOut)
+            util.rmtree(tmpDir)
+            server.DEBUG_PATH = DEBUG_PATH
+            server.epdb = epdbModule
+
+    def testDebugFallback(self):
+        DEBUG_PATH = server.DEBUG_PATH
+        # make sure we don't trigger anything in epdb at all.
+        class FakeEpdbModule(object):
+            def __init__(x):
+                x.st_called = False
+            def st(x, cond = ''):
+                x.st_called = True
+            def serve(x):
+                raise socket.error
+        epdbModule = server.epdb
+        tmpDir = tempfile.mkdtemp()
+        stdOut = os.dup(sys.stdout.fileno())
+        try:
+            devNull = os.open(os.devnull, os.W_OK)
+            os.dup2(devNull, sys.stdout.fileno())
+            os.close(devNull)
+            server.epdb = FakeEpdbModule()
+            server.DEBUG_PATH = tmpDir
+            self.mcp.checkDebug()
+            self.failIf(not server.epdb.st_called,
+                    "Expected epdb.serve to have been called")
+        finally:
+            os.dup2(stdOut, sys.stdout.fileno())
+            os.close(stdOut)
+            util.rmtree(tmpDir)
+            server.DEBUG_PATH = DEBUG_PATH
+            server.epdb = epdbModule
 
 
 if __name__ == "__main__":

@@ -9,6 +9,9 @@ import pprint
 import time
 import threading
 import simplejson
+import socket
+
+import epdb
 
 from conary import conaryclient
 from conary import conarycfg
@@ -33,6 +36,7 @@ LOG_LEVEL = logging.INFO
 dumpEvery = 10
 
 SLAVE_SET_NAME = 'group-jobslave-set'
+DEBUG_PATH = os.path.join(os.path.sep, 'srv', 'rbuilder', 'mcp', 'debug')
 
 def logTraceback(logger, msg = "Traceback:"):
     exc, e, bt = sys.exc_info()
@@ -575,6 +579,26 @@ class MCPServer(object):
 
             dataStr = self.responseTopic.read()
 
+    def checkDebug(self):
+        if os.path.exists(DEBUG_PATH):
+            # if any of stdin stderr or stdout are closed, we must use a
+            # remote connection
+            remote = sys.stdout.closed or sys.stderr.closed or sys.stdin.closed
+            # likewise, if they are not tty's we can't interact via them
+            remote = remote or \
+                    not(sys.stderr.isatty() and \
+                    sys.stdout.isatty() and \
+                    sys.stdin.isatty())
+            if remote:
+                try:
+                    epdb.serve()
+                except socket.error:
+                    log.warning('socket error when attempting to start epdb server. Assuming an open connection exists')
+                    log.warning('setting a standard breakpoint')
+                    epdb.st()
+            else:
+                epdb.st()
+
     def run(self):
         self.running = True
         self.requestMasterStatus()
@@ -585,6 +609,7 @@ class MCPServer(object):
             while self.running:
                 self.checkIncomingCommands()
                 self.checkResponses()
+                self.checkDebug()
                 time.sleep(0.1)
                 if time.time() > (lastDump + dumpEvery):
                     self.dump()
