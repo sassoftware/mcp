@@ -1182,15 +1182,29 @@ class McpTest(mcp_helper.MCPTest):
                 x.st_called = False
             def st(x, cond = ''):
                 x.st_called = True
+        class FakeFile(object):
+            closed = False
+            isatty = lambda x: True
         epdbModule = server.epdb
         tmpDir = tempfile.mkdtemp()
+        stdout = sys.stdout
+        stderr = sys.stderr
+        stdin = sys.stdin
         try:
+            # we actually have to stub out the tty's so that this test can be
+            # run by testsuite daemons
+            sys.stdout = FakeFile()
+            sys.stderr = FakeFile()
+            sys.stdin = FakeFile()
             server.epdb = FakeEpdbModule()
             server.DEBUG_PATH = tmpDir
             self.mcp.checkDebug()
             self.failIf(not server.epdb.st_called,
                     "Expected epdb.st to have been called")
         finally:
+            sys.stdout = stdout
+            sys.stderr = stderr
+            sys.stdin = stdin
             util.rmtree(tmpDir)
             server.DEBUG_PATH = DEBUG_PATH
             server.epdb = epdbModule
