@@ -97,8 +97,6 @@ class Queue(object):
                             self._unsubscribe()
                 elif not frame:
                     log.warning('Ignoring invalid stomp frame (%d bytes)' % len(message))
-                    self.lock.release()
-                    return
         finally:
             self.lock.release()
 
