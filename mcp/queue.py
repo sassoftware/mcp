@@ -13,7 +13,7 @@ class StompFrame(object):
     def parse(message):
         ret = StompFrame()
         try:
-            headers, body = message.split('\n\n', 1)
+            headers, body = message.lstrip().split('\n\n', 1)
             headers = headers.splitlines()
             ret.type = headers.pop(0)
             for x in headers:
@@ -96,7 +96,8 @@ class Queue(object):
                         if not self.queueLimit:
                             self._unsubscribe()
                 elif not frame:
-                    log.warning('Ignoring invalid stomp frame (%d bytes)' % len(message))
+                    logging.warning('Ignoring invalid stomp frame (%d bytes)' % len(message))
+                    logging.debug('Invalid frame: %s' % repr(message))
         finally:
             self.lock.release()
 
