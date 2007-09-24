@@ -3,6 +3,27 @@
 import threading
 import time
 import stomp
+import logging
+
+class StompFrame(object):
+    def __init__(self):
+        self.headers = {}
+
+    @staticmethod
+    def parse(message):
+        ret = StompFrame()
+        try:
+            headers, body = message.split('\n\n', 1)
+            headers = headers.splitlines()
+            ret.type = headers.pop(0)
+            for x in headers:
+                key, value = x.split(':', 1)
+                ret.headers[key.strip()] = value.strip()
+            ret.body = body
+        except:
+            return None
+        return ret
+
 
 # Class level tweakable settings:
 # timeOut: The time in seconds to wait on read before simply returning None
@@ -64,17 +85,20 @@ class Queue(object):
             if self.limitedQueue and not self.queueLimit:
                 self._unsubscribe()
             else:
-                self.inbound.insert(0, message.split('\n\n\n')[1].strip())
-                messageLine = [x for x in message.split('\n') \
-                                   if x.strip().startswith('message-id')][0]
-                messageId = messageLine[messageLine.index(':') + 1:].strip()
-                if self.ack == 'client':
-                    self.connection.ack(messageId)
-                # ack before unsubscribe, or race condition ensues
-                if self.limitedQueue:
-                    self.queueLimit = max(self.queueLimit - 1, 0)
-                    if not self.queueLimit:
-                        self._unsubscribe()
+                frame = StompFrame.parse(message)
+                if frame and frame.type == 'MESSAGE':
+                    self.inbound.insert(0, frame.body)
+                    if self.ack == 'client':
+                        self.connection.ack(frame.headers['message-id'])
+                    # ack before unsubscribe, or race condition ensues
+                    if self.limitedQueue:
+                        self.queueLimit = max(self.queueLimit - 1, 0)
+                        if not self.queueLimit:
+                            self._unsubscribe()
+                elif not frame:
+                    log.warning('Ignoring invalid stomp frame (%d bytes)' % len(message))
+                    self.lock.release()
+                    return
         finally:
             self.lock.release()
 

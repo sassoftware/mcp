@@ -51,7 +51,7 @@ class DummyConnection(object):
         self.acks.append(messageId)
 
     def insertMessage(self, message):
-        message = 'message-id: message-%d\n\n\n' % self.messageCount + message
+        message = 'MESSAGE\nmessage-id: message-%d\n\n' % self.messageCount + message
         self.messageCount += 1
         for listener in self.listeners:
             listener.receive(message)
@@ -91,7 +91,7 @@ class QueueTest(mcp_helper.MCPTest):
 
     def testRecv(self):
         assert self.q.read() == None
-        self.q.receive('message-id: message-test\n\n\ntest')
+        self.q.receive('MESSAGE\nmessage-id: message-test\n\ntest')
         assert self.q.read() == 'test'
         assert self.q.connection.acks == ['message-test']
         assert self.q.read() == None
@@ -177,7 +177,7 @@ class QueueTest(mcp_helper.MCPTest):
 
     def testMultiplexedRecv(self):
         q = queue.MultiplexedQueue('dummyhost', 12345, namespace = 'test')
-        q.receive('message-id: test-message\n\n\ntest')
+        q.receive('MESSAGE\nmessage-id: test-message\n\ntest')
         assert q.inbound == ['test']
         assert q.connection.acks == ['test-message']
 
