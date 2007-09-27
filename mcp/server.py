@@ -32,7 +32,6 @@ import traceback
 
 PROTOCOL_VERSION = 1
 
-LOG_LEVEL = logging.INFO
 dumpEvery = 10
 
 SLAVE_SET_NAME = 'group-jobslave-set'
@@ -102,7 +101,7 @@ class MCPServer(object):
 
         self.cfg = cfg
         if cfg.logPath:
-            mcp_log.addRootLogger(level=LOG_LEVEL,
+            mcp_log.addRootLogger(level=cfg.logLevel,
                     format='%(asctime)s %(levelname)s %(message)s',
                     filename= os.path.join(cfg.logPath, 'mcp.log'),
                     filemode='a')

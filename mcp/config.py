@@ -9,9 +9,12 @@ import os
 from conary import conarycfg
 from conary.lib import cfgtypes
 
+from mcp_log import CfgLogLevel
+
 class MCPConfig(conarycfg.ConfigFile):
     basePath = os.path.join(os.path.sep, 'srv', 'rbuilder', 'mcp')
     logPath = os.path.join(os.path.sep, 'var', 'log', 'rbuilder')
+    logLevel = (CfgLogLevel, 'INFO')
 
     queueHost = '127.0.0.1'
     queuePort = (cfgtypes.CfgInt, 61613)
