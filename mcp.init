@@ -48,6 +48,11 @@ case "$1" in
         stop --wait
         start
         ;;
+  reload)
+        stop --wait
+        rm -f /srv/rbuilder/mcp/jobs
+        start
+        ;;
   status)
         status $DAEMON
         ;;
