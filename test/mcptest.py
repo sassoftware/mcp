@@ -595,6 +595,7 @@ class McpTest(mcp_helper.MCPTest):
         class MockDisc(object):
             def __init__(self):
                 self.connected = True
+                self.connectionName = ''
             def disconnect(self):
                 self.connected = False
 
@@ -606,7 +607,8 @@ class McpTest(mcp_helper.MCPTest):
 
         self.mcp.running = True
         self.mcp.disconnect()
-        self.failIf(self.mcp.commandQueue.connected, "Command Queue was not disconnected")
+        self.failIf(self.mcp.commandQueue.connected,
+                "Command Queue was not disconnected")
         self.failIf(self.mcp.responseTopic.connected,
                     "Response Topic was not disconnected")
         self.failIf(self.mcp.controlTopic.connected,
@@ -1264,6 +1266,69 @@ class McpTest(mcp_helper.MCPTest):
             util.rmtree(tmpDir)
             server.DEBUG_PATH = DEBUG_PATH
             server.epdb = epdbModule
+
+    def testLoadJobs(self):
+        self.jobs = []
+        def jobrecorder(data, force = False):
+            self.jobs.append(data)
+
+        self.mcp.handleJob = jobrecorder
+        jobPath = os.path.join(self.cfg.basePath, 'jobs')
+        f = open(jobPath, 'w')
+        f.write('bogus data 1\nbogus data 2\n')
+        f.close()
+        self.mcp.loadJobs()
+        self.assertEquals(self.jobs, ['bogus data 1', 'bogus data 2'])
+        self.failIf(os.path.exists(jobPath), "recorded jobData was not deleted")
+
+    def testLoadNoJobs(self):
+        self.jobs = []
+        def jobrecorder(data, force = False):
+            self.jobs.append(data)
+
+        self.mcp.handleJob = jobrecorder
+        jobPath = os.path.join(self.cfg.basePath, 'jobs')
+        open(jobPath, 'w').write('')
+        self.mcp.loadJobs()
+        self.assertEquals(self.jobs, [])
+
+    def testSaveNoJobs(self):
+        jobPath = os.path.join(self.cfg.basePath, 'jobs')
+        self.mcp.saveJobs()
+        self.failIf(not os.path.exists(jobPath),
+                "recorded jobData was not created")
+
+    def testSaveJobs(self):
+        class JobsDummyQueue(object):
+            def __init__(x, connectionName):
+                x.connectionName = connectionName
+
+        class JobsFakeQueue(object):
+            def __init__(x, host, port, dest, **kwargs):
+                if dest == 'job:x86':
+                    x.lines = ['x86 line 1']
+                else:
+                    x.lines = ['x86_64 line 1', 'x86_64 line 2']
+            def read(x):
+                return x.lines and x.lines.pop() or None
+            disconnect = lambda *args, **kwargs: None
+
+        jobPath = os.path.join(self.cfg.basePath, 'jobs')
+
+        for name in ('job:x86', 'job:x86_64'):
+            self.mcp.jobQueues[name] = \
+                    JobsDummyQueue('/'.join(('', 'queue', 'test', name)))
+
+        Queue = queue.Queue
+        try:
+            queue.Queue = JobsFakeQueue
+            self.mcp.saveJobs()
+        finally:
+            queue.Queue = Queue
+        f = open(jobPath)
+        res = sorted([x.strip() for x in f])
+        ref = ['x86 line 1', 'x86_64 line 1', 'x86_64 line 2']
+        self.assertEquals(res, ref)
 
 
 if __name__ == "__main__":
