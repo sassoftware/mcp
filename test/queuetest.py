@@ -9,6 +9,7 @@ import testsuite
 testsuite.setup()
 import simplejson
 
+import logging
 import os
 import time
 import threading
@@ -257,6 +258,32 @@ class QueueTest(mcp_helper.MCPTest):
                     "Expected /queue/test/fist and /queue/test/second but "
                     "got: %s" % str(q.connectionNames))
 
+    def testRecvBadMessage(self):
+        q = queue.Queue('dummyhost', 12345, dest = 'limittest',
+                        namespace = 'test')
+
+        self.warnings = []
+        self.debugs = []
+
+        def fakeWarning(message):
+            self.warnings.append(message)
+
+        def fakeDebug(message):
+            self.debugs.append(message)
+
+        warning = logging.warning
+        debug = logging.debug
+        try:
+            logging.warning = fakeWarning
+            logging.debug = fakeDebug
+            q.receive('not json')
+        finally:
+            logging.debug = debug
+            logging.warning = warning
+
+        self.assertEquals(self.warnings,
+                ['Ignoring invalid stomp frame (8 bytes)'])
+        self.assertEquals(self.debugs, ["Invalid frame: 'not json'"])
 
 if __name__ == "__main__":
     testsuite.main()
