@@ -123,6 +123,36 @@ class MCPServer(object):
                                                 autoSubscribe = False,
                                                 timeOut = 0)
 
+    def saveJobs(self):
+        fn = os.path.join(self.cfg.basePath, 'jobs')
+        f = open(fn, 'w')
+        try:
+            for conn in [x.connectionName for x in self.jobQueues.values()]:
+                queueName = conn.split('/')[-1]
+                jobQueue = queue.Queue(self.cfg.queueHost,
+                        self.cfg.queuePort, queueName,
+                        namespace = self.cfg.namespace, timeOut = 0,
+                        autoSubscribe = True)
+                dataStr = jobQueue.read()
+                while dataStr:
+                    f.write(dataStr)
+                    f.write('\n')
+                    dataStr = jobQueue.read()
+                jobQueue.disconnect()
+        finally:
+            f.close()
+
+    def loadJobs(self):
+        fn = os.path.join(self.cfg.basePath, 'jobs')
+        if os.path.exists(fn):
+            try:
+                f = open(fn)
+                for dataStr in f.readlines():
+                    self.handleJob(dataStr.strip())
+            finally:
+                # no matter what, only read this data once.
+                os.unlink(fn)
+
     def logJob(self, jobId, message):
         message = '\n'.join([x for x in message.splitlines() if x])
         if self.cfg.logPath:
@@ -599,6 +629,7 @@ class MCPServer(object):
                 epdb.st()
 
     def run(self):
+        self.loadJobs()
         self.running = True
         self.requestMasterStatus()
         self.requestSlaveStatus()
@@ -628,6 +659,7 @@ class MCPServer(object):
         self.commandQueue.disconnect()
         self.responseTopic.disconnect()
         self.controlTopic.disconnect()
+        self.saveJobs()
         for name in self.jobQueues:
             self.jobQueues[name].disconnect()
         self.postQueue.disconnect()
