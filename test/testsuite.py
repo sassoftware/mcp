@@ -19,7 +19,6 @@ import types
 import unittest
 import __builtin__
 
-archivePath = None
 testPath = None
 
 conaryDir = None
@@ -29,50 +28,25 @@ def setup():
     if _setupPath:
         return _setupPath
     global testPath
-    global archivePath
-
-    # set default CONARY_POLICY_PATH is it was not set.
-    conaryPolicy = os.getenv('CONARY_POLICY_PATH', '/usr/lib/conary/policy')
-    os.environ['CONARY_POLICY_PATH'] = conaryPolicy
-
-    # set default MCP_PATH, if it was not set.
-    parDir = '/'.join(os.path.realpath(__file__).split('/')[:-2])
-    mcpPath = os.getenv('MCP_PATH', parDir)
-    os.environ['MCP_PATH'] = mcpPath
-
-    if mcpPath not in sys.path:
-        sys.path.insert(0, mcpPath)
-    # end setting default MCP_PATH/CONARY_POLICY_PATH
 
     if not os.environ.has_key('CONARY_PATH'):
         print "please set CONARY_PATH"
         sys.exit(1)
-    paths = (os.environ['MCP_PATH'], os.environ['MCP_PATH'] + '/test',
-             os.environ['CONARY_PATH'],
-             os.path.normpath(os.environ['CONARY_PATH'] + "/../rmake"),
-             os.path.normpath(os.environ['CONARY_PATH'] + "/../conary-test"),)
-    pythonPath = os.getenv('PYTHONPATH') or ""
-    for p in reversed(paths):
-        if p in sys.path:
-            sys.path.remove(p)
-        sys.path.insert(0, p)
-    for p in paths:
-        if p not in pythonPath:
-            pythonPath = os.pathsep.join((pythonPath, p))
-    os.environ['PYTHONPATH'] = pythonPath
 
-    if isIndividual():
-        serverDir = '/tmp/conary-server'
-        if os.path.exists(serverDir) and not os.path.access(serverDir, os.W_OK):
-            serverDir = serverDir + '-' + pwd.getpwuid(os.getuid())[0]
-        os.environ['SERVER_FILE_PATH'] = serverDir
+    conaryPath      = os.getenv('CONARY_PATH')
+    conaryTestPath  = os.getenv('CONARY_TEST_PATH', os.path.join(conaryPath, '..', 'conary-test'))
+    mcpPath         = os.getenv('MCP_PATH',         '..')
+    mcpTestPath     = os.getenv('MCP_TEST_PATH',    '.')
+
+    sys.path = [os.path.realpath(x) for x in (mcpPath, mcpTestPath, conaryPath, conaryTestPath)] + sys.path
+    os.environ.update(dict(CONARY_PATH=conaryPath, CONARY_TEST_PATH=conaryTestPath,
+        MCP_PATH=mcpPath, MCP_TEST_PATH=mcpTestPath, PYTHONPATH=(':'.join(sys.path))))
+
     import testhelp
     testPath = testhelp.getTestPath()
-    archivePath = testPath + '/' + "archive"
-    parent = os.path.dirname(testPath)
 
     global conaryDir
-    conaryDir = os.environ['CONARY_PATH']
+    conaryDir = conaryPath
 
     from conary.lib import util
     sys.excepthook = util.genExcepthook(True)
