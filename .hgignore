@@ -1,1 +1,5 @@
-.*\.pyc$
+\.(pyc|pyo|orig|swp)$
+,cover$
+
+^test/\.times$
+^test/\.coverage
