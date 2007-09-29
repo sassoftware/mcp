@@ -1265,6 +1265,44 @@ class McpTest(mcp_helper.MCPTest):
             server.DEBUG_PATH = DEBUG_PATH
             server.epdb = epdbModule
 
+    def testSlavesetLabel(self):
+        '''Retrieve jobslave-set label'''
+        class DummyFile:
+            def __init__(foo, path, *P, **K):
+                self.assertEquals(path, '/etc/sysconfig/appliance-group')
+            def read(foon):
+                return 'group-hug\n'
+        class DeadFile:
+            def __init__(foo, path, *P, **K):
+                raise IOError, 'CAN HAS FILE?'
+        class DummyClient:
+            def __init__(xself, trove, rev):
+                xself.db = xself # make cc.db.findTrove work
+                xself.trove, xself.rev = trove, rev
+            def findTrove(xself, path, spec, *P, **K):
+                self.assertEquals(spec[0], xself.trove)
+                return [(xself.trove, versions.VersionFromString(xself.rev),
+                    deps.parseFlavor(''))]
+
+        # set up
+        oldLabel, self.cfg.slaveSetLabel = self.cfg.slaveSetLabel, None
+        import mcp.server
+
+        # with appliance-group
+        mcp.server.open = DummyFile
+        label = self.mcp.getTopGroupLabel(DummyClient('group-hug',
+            '/conary.rpath.com@rpl:devel//1/1.2.3-0.4-5'))
+        self.assertEquals(label, 'conary.rpath.com@rpl:1')
+
+        # without appliance-group
+        mcp.server.open = DeadFile
+        label = self.mcp.getTopGroupLabel(DummyClient('mcp',
+            '/ted.danson@bean:cup/9-8-7'))
+        self.assertEquals(label, 'ted.danson@bean:cup')
+
+        # tear down
+        self.cfg.slaveSetLabel = oldLabel
+        mcp.server.open = open
 
 if __name__ == "__main__":
     testsuite.main()
