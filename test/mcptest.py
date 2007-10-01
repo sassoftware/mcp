@@ -936,17 +936,15 @@ class McpTest(mcp_helper.MCPTest):
 
     def testRunMcp(self):
         sleep = time.sleep
-        class IterationComplete(Exception):
-            pass
-
         def newSleep(*args, **kwargs):
-            raise IterationComplete
+            self.mcp.running = False
 
         stockSlaveSource = self.mcp.stockSlaveSource
         try:
             self.mcp.stockSlaveSource = lambda: None
             time.sleep = newSleep
-            self.assertRaises(IterationComplete, self.mcp.run)
+            self.mcp.run()
+            self.assertEquals(self.mcp.running, False)
         finally:
             self.mcp.stockSlaveSource = stockSlaveSource
             time.sleep = sleep
