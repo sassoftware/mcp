@@ -1,9 +1,25 @@
 # insert copyright notice
 
+import logging
+import stomp
+import sys
 import threading
 import time
-import stomp
-import logging
+import traceback
+
+def logErrors(func):
+    def wrapper(self, *args, **kwargs):
+        try:
+            func(self, *args, **kwargs)
+        except:
+            # receive is not atomic, we cannot recover
+            exc, e, bt = sys.exc_info()
+            logging.error("CRITICAL ERROR: Stomp receive thread has crashed!")
+            logging.error(e.__class__.__name__ + ": " + str(e))
+            logging.error('\n'.join(traceback.format_tb(bt)))
+            raise
+    return wrapper
+
 
 class StompFrame(object):
     def __init__(self):
@@ -79,6 +95,7 @@ class Queue(object):
         self.connection.disconnect()
         self.connection = None
 
+    @logErrors
     def receive(self, message):
         self.lock.acquire()
         try:
