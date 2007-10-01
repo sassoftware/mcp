@@ -285,5 +285,28 @@ class QueueTest(mcp_helper.MCPTest):
                 ['Ignoring invalid stomp frame (8 bytes)'])
         self.assertEquals(self.debugs, ["Invalid frame: 'not json'"])
 
+    def testRecvTraceback(self):
+        def fail(*args, **kwargs):
+            raise RuntimeError('deliberate failure')
+
+        q = queue.Queue('dummyhost', 12345, dest = 'limittest',
+                        namespace = 'test')
+
+        self.errors = []
+        def FakeError(msg):
+            self.errors.append(msg)
+
+        q.lock.acquire = fail
+        error = logging.error
+        try:
+            logging.error = FakeError
+            self.assertRaises(RuntimeError, q.receive, 'bogus message')
+        finally:
+            logging.error = error
+        self.assertEquals(self.errors[:2],
+                ['CRITICAL ERROR: Stomp receive thread has crashed!',
+                    'RuntimeError: deliberate failure'])
+
+
 if __name__ == "__main__":
     testsuite.main()
