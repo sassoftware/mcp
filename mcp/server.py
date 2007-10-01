@@ -634,16 +634,19 @@ class MCPServer(object):
         self.requestMasterStatus()
         self.requestSlaveStatus()
         try:
-            self.stockSlaveSource()
-            lastDump = time.time()
-            while self.running:
-                self.checkIncomingCommands()
-                self.checkResponses()
-                self.checkDebug()
-                time.sleep(0.1)
-                if time.time() > (lastDump + dumpEvery):
-                    self.dump()
-                    lastDump = time.time()
+            try:
+                self.stockSlaveSource()
+                lastDump = time.time()
+                while self.running:
+                    self.checkIncomingCommands()
+                    self.checkResponses()
+                    self.checkDebug()
+                    time.sleep(0.1)
+                    if time.time() > (lastDump + dumpEvery):
+                        self.dump()
+                        lastDump = time.time()
+            except:
+                logTraceback(log.error, "Unhandled Exception:")
         finally:
             self.disconnect()
 
