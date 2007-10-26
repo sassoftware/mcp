@@ -267,6 +267,8 @@ class MCPServer(object):
 
         valid, data = decodeJson(dataStr)
         if not valid:
+            log.warning("Job could not be added. Invalid data found: '%s'" % \
+                    dataStr)
             return None
 
         UUID = data['UUID']
@@ -277,15 +279,13 @@ class MCPServer(object):
         self.jobQueues[queueName].send(dataStr)
         self.waitingJobs.append(UUID)
 
-    def handleJob(self, dataStr, force = False):
+    def handleJob(self, dataStr):
         valid, data = decodeJson(dataStr)
         if not valid:
             return None
 
         UUID = data['UUID']
-        if (not force) and (UUID in self.jobs) and \
-                (self.jobs[UUID]['status'][0] not in (jobstatus.FINISHED,
-                                                      jobstatus.FAILED)):
+        if (UUID in self.jobs):
             raise mcp_error.JobConflict
         type = data['type']
         version = ''
@@ -432,26 +432,22 @@ class MCPServer(object):
                 self.handleCommand(data)
             dataStr = self.commandQueue.read()
 
-    def respawnJob(self, slaveId):
-        jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
-        job = self.jobs.get(jobId, {})
-        jobData = job.get('data', None)
-        if jobId in self.waitingJobs:
-            self.waitingJobs.remove(jobId)
-        if jobData and (job.get('status', ('', ''))[0] not in \
-                (jobstatus.FINISHED, jobstatus.FAILED, jobstatus.KILLED)):
-            log.info("Respawning Job: %s" % jobId)
-            self.handleJob(jobData, force = True)
-
     def isJobKilled(self, jobId):
         job = self.jobs.get(jobId, {})
         return job.get('status', ('', ''))[0] == jobstatus.KILLED
 
-    def handleKilledJobs(self, slaveId):
+    def handleDeadJobs(self, slaveId):
         jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
+        job = self.jobs.get(jobId, {})
+
+        if jobId in self.waitingJobs:
+            self.waitingJobs.remove(jobId)
+
         if self.isJobKilled(jobId):
-            job = self.jobs[jobId]
             job['status'] = (jobstatus.FAILED, "Job killed at user's request")
+        elif job.get('status', ('', ''))[0] not in \
+                (jobstatus.FAILED, jobstatus.FINISHED):
+            job['status'] = (jobstatus.FAILED, "The slave handling this job has died.")
 
     def slaveOffline(self, slaveId):
         # clear the job log when a slave goes down
@@ -463,9 +459,7 @@ class MCPServer(object):
             os.system("/bin/gzip %s" % self.logFiles[jobId].name)
             del self.logFiles[jobId]
 
-        # only respawn job after slave is offline to avoid race conditions
-        self.respawnJob(slaveId)
-        self.handleKilledJobs(slaveId)
+        self.handleDeadJobs(slaveId)
         masterId = slaveId.split(':')[0]
         if slaveId in self.jobSlaves:
             del self.jobSlaves[slaveId]
@@ -570,6 +564,12 @@ class MCPServer(object):
                                  data['statusMessage']),
                      'slaveId' : node,
                      'data' : 'jobData' in data and data['jobData'] or None})
+                if job['status'][0] in (jobstatus.FINISHED, jobstatus.FAILED):
+                    log.warning("Status message for job Id: %s ignored. " \
+                            "Attempted to change status from %s to %s" % \
+                            (jobId, jobstatus.statusNames[job['status'][0]],
+                                jobstatus.statusNames[data['status']]))
+                    return
                 if jobId in self.waitingJobs:
                     self.waitingJobs.remove(jobId)
                 if data['status'] == jobstatus.RUNNING:

@@ -141,7 +141,7 @@ class McpTest(mcp_helper.MCPTest):
             {'status': slavestatus.IDLE, 'type': '2.0.2-1-1:x86',
                     'jobId': None})
 
-    def testSlavehandleKilledJobs(self):
+    def testSlavehandleDeadJobs(self):
         jobId = 'rogueJob'
         slaveId = 'master:slave'
         self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
@@ -150,10 +150,65 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.jobs = {jobId : {'data': '',
                                   'status': (jobstatus.KILLED, ''),
                                   'slaveId': slaveId}}
-        self.mcp.handleKilledJobs(slaveId)
+        self.mcp.handleDeadJobs(slaveId)
         self.failIf(self.mcp.jobs[jobId]['status'] != \
                 (301, "Job killed at user's request"),
                 "Job didn't transition from killed to failed")
+
+    def testDeadSlaveMasking(self):
+        jobId = 'test.rpath.local-build-5-4'
+        slaveId = 'master:slave42'
+        self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
+                                                'jobId' : jobId,
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.FAILED,
+                                      'original failed message'),
+                                  'slaveId': slaveId}}
+        self.mcp.handleDeadJobs(slaveId)
+        self.failIf(self.mcp.jobs[jobId]['status'] == \
+                (301, "Job killed at user's request"),
+                "slave death masked real failure message")
+
+    def testJobStatusChanges(self):
+        jobId = 'test-build-21-1'
+        slaveId = 'master:slave21'
+        self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
+                                                'jobId' : jobId,
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.RUNNING, ''),
+                                  'slaveId': slaveId}}
+
+        data = {'node' : slaveId,
+            'protocolVersion' : 1,
+            'event' : 'jobStatus',
+            'jobId' : jobId,
+            'status' : jobstatus.FINISHED,
+            'statusMessage' : ''}
+
+        self.mcp.handleResponse(data)
+
+        ref = {'test-build-21-1': {'status': (300, ''),
+                                    'data': '',
+                                    'slaveId': None}}
+        self.assertEquals(self.mcp.jobs, ref)
+
+        # send a status message that would move from a final state to running
+        # check that it was ignored
+        data['status'] = jobstatus.RUNNING
+        self.mcp.handleResponse(data)
+        self.assertEquals(self.mcp.jobs, ref)
+        self.assertLogContent( \
+                'Attempted to change status from Finished to Running')
+
+    def testAddBadJob(self):
+        version = 'bogus'
+        suffix = 'x86'
+        dataStr = 'badJson'
+        self.mcp.addJob(version, suffix, dataStr)
+        self.assertLogContent( \
+                "Job could not be added. Invalid data found: 'badJson'")
 
     def testStartSlaveBlacklist(self):
         assert self.mcp.jobMasters == {}
@@ -242,7 +297,7 @@ class McpTest(mcp_helper.MCPTest):
         assert self.mcp.postQueue.outgoing
         res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
 
-        assert res == [False, u'test.rpath.local:build-0']
+        assert res == [False, u'test.rpath.local-build-0-0']
 
     def testBrokenCommands(self):
         self.mcp.commandQueue.incoming = [simplejson.dumps('absolutelyWrong')]
@@ -276,12 +331,34 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.checkIncomingCommands()
         res = self.mcp.postQueue.outgoing.pop()
 
-        assert res == '[false, "test.rpath.local:build-0"]'
+        assert res == '[false, "test.rpath.local-build-0-0"]'
         assert self.mcp.commandQueue.incoming == []
 
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
         res = self.mcp.postQueue.outgoing.pop()
+        assert res == '[true, ["JobConflict", "Job already in progress"]]'
+
+    def testJobConflict2(self):
+        jobId = 'test.rpath.local-build-2-3'
+        slaveId = 'master:slave'
+        self.mcp.jobSlaves = {slaveId : {'status' : slavestatus.STARTED,
+                                                'jobId' : jobId,
+                                                'type' : '1.0.4-12-3:x86'}}
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.KILLED, ''),
+                                  'slaveId': slaveId}}
+        build = simplejson.dumps({"troveFlavor": "1#x86",
+                "data": {"jsversion": "4.0.3"},
+                "type": "build",
+                "UUID": jobId,
+                "protocolVersion": 1})
+        self.client.submitJob(build)
+        dataCommand = self.client.command.outgoing[0]
+        self.mcp.commandQueue.incoming = [dataCommand]
+        self.mcp.checkIncomingCommands()
+        res = self.mcp.postQueue.outgoing.pop()
+
         assert res == '[true, ["JobConflict", "Job already in progress"]]'
 
     def testUnknownJob(self):
@@ -367,23 +444,23 @@ class McpTest(mcp_helper.MCPTest):
 
     def testStopJobUnk(self):
         self.assertRaises(mcp_error.UnknownJob,
-                          self.mcp.stopJob, 'test.rpath.local:build-22')
+                          self.mcp.stopJob, 'test.rpath.local-build-1-22')
 
     def testStopJob(self):
         build = self.getJsonBuild()
         self.mcp.jobSlaves = \
             {'master:slave' : {'status' : slavestatus.STARTED,
-                               'jobId' : 'test.rpath.local:build-22',
+                               'jobId' : 'test.rpath.local-build-1-22',
                                'type' : '1.0.4-12-3:x86'}}
         self.mcp.jobs = \
-            {'test.rpath.local:build-22' : {'data' : build,
+            {'test.rpath.local-build-1-22' : {'data' : build,
                                             'status' : jobstatus.RUNNING,
                                             'slaveId' : 'master:slave'}}
-        self.mcp.stopJob('test.rpath.local:build-22')
+        self.mcp.stopJob('test.rpath.local-build-1-22')
         control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
         self.checkValue(control, 'node', 'slaves')
         self.checkValue(control, 'action', 'stopJob')
-        self.checkValue(control, 'jobId', 'test.rpath.local:build-22')
+        self.checkValue(control, 'jobId', 'test.rpath.local-build-1-22')
 
         assert 'protocolVersion' in control
 
@@ -396,36 +473,6 @@ class McpTest(mcp_helper.MCPTest):
         res = self.mcp.postQueue.outgoing.pop()
         assert res == \
            '[true, ["ProtocolError", "Unknown Protocol Version: 999999999999"]]'
-
-    def testRespawn(self):
-        build = self.getJsonBuild()
-        self.mcp.jobSlaves = \
-            {'master:slave' : {'status' : slavestatus.STARTED,
-                               'jobId' : 'test.rpath.local:build-22',
-                               'type' : '1.0.4-12-3:x86'}}
-        self.mcp.jobs = \
-            {'test.rpath.local:build-22' : {'data' : build,
-                                            'status' : (jobstatus.RUNNING, ''),
-                                            'slaveId' : 'master:slave'}}
-
-        assert not self.mcp.jobQueues
-        self.mcp.respawnJob('master:slave')
-        self.assertLogContent('Respawn')
-
-        outBuild = simplejson.loads(self.mcp.jobQueues['job:x86'].outgoing[0])
-        build = simplejson.loads(build)
-        for key, val in build.iteritems():
-            self.failIf(outBuild.get(key) != val,
-                    "build data %s did not match expected value: %s" % \
-                        (key, val))
-
-    def testRespawnData(self):
-        build = self.getJsonBuild()
-        self.mcp.jobSlaves = {'master:slave' : {'status' : slavestatus.STARTED,
-                                                'jobId' : None,
-                                                'type' : '1.0.4-12-3:x86'}}
-        self.mcp.respawnJob('master:slave')
-        assert not self.mcp.jobQueues
 
     def testSlaveOffline(self):
         jobId = 'rogueJob'
@@ -950,7 +997,7 @@ class McpTest(mcp_helper.MCPTest):
             time.sleep = sleep
 
     def testWaitingJobNumber(self):
-        jobId = 'test.rpath.local:build-0'
+        jobId = 'test.rpath.local-build-0-0'
         self.submitBuild()
         self.mcp.checkIncomingCommands()
         self.failIf(self.mcp.waitingJobs != [jobId],
@@ -969,7 +1016,7 @@ class McpTest(mcp_helper.MCPTest):
                 'Status message does not reflect place in line')
 
     def testWaitingJobNumber2(self):
-        jobId = 'test.rpath.local:build-1'
+        jobId = 'test.rpath.local-build-1-0'
         self.submitBuild()
         self.mcp.checkIncomingCommands()
         self.submitBuild()
@@ -988,8 +1035,8 @@ class McpTest(mcp_helper.MCPTest):
                 'Status message does not reflect place in line')
 
     def testWaitingJobDecrement(self):
-        jobId0 = 'test.rpath.local:build-0'
-        jobId1 = 'test.rpath.local:build-1'
+        jobId0 = 'test.rpath.local-build-0-0'
+        jobId1 = 'test.rpath.local-build-1-0'
         self.submitBuild()
         self.mcp.checkIncomingCommands()
         self.submitBuild()
@@ -1012,8 +1059,8 @@ class McpTest(mcp_helper.MCPTest):
                 'Status message does not reflect place in line')
 
     def testWaitingJobMasking(self):
-        jobId0 = 'test.rpath.local:build-0'
-        jobId1 = 'test.rpath.local:build-1'
+        jobId0 = 'test.rpath.local-build-1-0'
+        jobId1 = 'test.rpath.local-build-1-1'
         self.submitBuild()
         self.mcp.checkIncomingCommands()
         self.submitBuild()
@@ -1036,7 +1083,7 @@ class McpTest(mcp_helper.MCPTest):
                 'Status message was masked by waiting logic')
 
     def testWaitingJobKilled(self):
-        jobId = 'test.rpath.local:build-0'
+        jobId = 'test.rpath.local-build-0-0'
         self.submitBuild()
         self.mcp.checkIncomingCommands()
         self.failIf(self.mcp.waitingJobs != [jobId],
@@ -1056,7 +1103,7 @@ class McpTest(mcp_helper.MCPTest):
                 "expected dead job, not a place in line")
 
     def testJobKillSlaveAssoc(self):
-        jobId = 'test.rpath.local:build-0'
+        jobId = 'test.rpath.local-build-0-0'
         self.submitBuild()
         self.mcp.checkIncomingCommands()
         self.failIf(self.mcp.waitingJobs != [jobId],
@@ -1073,7 +1120,7 @@ class McpTest(mcp_helper.MCPTest):
         self.failIf(jobId != newJobId, "job was not assigned to slave in kill scenario")
 
     def testJobKillWaitingEffect(self):
-        jobId = 'test.rpath.local:build-0'
+        jobId = 'test.rpath.local-build-0-0'
         slaveId = 'master:slave'
         self.submitBuild()
         self.mcp.checkIncomingCommands()
@@ -1366,6 +1413,7 @@ class McpTest(mcp_helper.MCPTest):
         res = sorted([x.strip() for x in f])
         ref = ['x86 line 1', 'x86_64 line 1', 'x86_64 line 2']
         self.assertEquals(res, ref)
+
 
 if __name__ == "__main__":
     testsuite.main()

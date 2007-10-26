@@ -203,7 +203,7 @@ class MCPTest(testhelp.TestCase, MCPTestMixin):
         buildDict = {}
         buildDict['protocolVersion'] = 1
         buildDict['type'] = 'build'
-        buildDict['UUID'] = 'test.rpath.local:build-%d' % self.buildCount
+        buildDict['UUID'] = 'test.rpath.local-build-%d-0' % self.buildCount
         self.buildCount += 1
         buildDict['data'] = {}
         buildDict['data']['jsversion'] = jsversion
