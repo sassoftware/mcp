@@ -714,7 +714,7 @@ class McpTest(mcp_helper.MCPTest):
                     "slave was not associtated with it's job")
 
     def testStopJobStatus(self):
-        jobId = 'dummy-build-23'
+        jobId = 'dummy-build-23-4'
         slaveId = 'master:slave'
 
         self.mcp.jobs = {jobId : {'status' : (jobstatus.RUNNING, ''),
@@ -725,16 +725,30 @@ class McpTest(mcp_helper.MCPTest):
                                                'type': '3.0.0-1-1:x86',
                                                'jobId' : jobId}}
 
-        self.mcp.logFiles = {jobId: 'dummy logfile'}
-        self.mcp.handleResponse({'node' : slaveId,
-                                 'protocolVersion' : 1,
-                                 'event' : 'jobStatus',
-                                 'jobId' : jobId,
-                                 'status' : jobstatus.FINISHED,
-                                 'statusMessage' : ''})
+        dummyLogFile = StringIO.StringIO()
+        dummyLogFile.name = '/dummy/logfile'
+        self.mcp.logFiles = {jobId : dummyLogFile}
 
-        self.failUnless(self.mcp.logFiles,
-                    "Log file handler should not yet have been removed")
+        def fakeSystem(cmd):
+            self.cmds.append(cmd)
+        self.cmds = []
+
+        system = os.system
+        os.system = fakeSystem
+        try:
+            self.mcp.handleResponse({'node' : slaveId,
+                                     'protocolVersion' : 1,
+                                     'event' : 'jobStatus',
+                                     'jobId' : jobId,
+                                     'status' : jobstatus.FINISHED,
+                                     'statusMessage' : ''})
+        finally:
+            os.system = system
+
+        self.assertEquals(self.cmds, ['/bin/gzip /dummy/logfile'])
+
+        self.failUnless(not(self.mcp.logFiles),
+                    "Log file handler should have been removed")
 
         self.failIf(self.mcp.jobs[jobId]['slaveId'] != None,
                     "job was not disassociated with its slave upon completion")
@@ -1220,6 +1234,38 @@ class McpTest(mcp_helper.MCPTest):
         finally:
             self.mcp.cfg.logPath = savedLogPath
             util.rmtree(tmpDir, ignore_errors = True)
+
+    def testJobLogLost(self):
+        jobId = 'rogueJob'
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.FAILED, ''),
+                                  'slaveId': None}}
+
+        self.mcp.handleResponse({ \
+                'protocolVersion': 1,
+                'node': 'bogus:slave',
+                'jobId': jobId,
+                'message': 'test message',
+                'event': 'jobLog'})
+
+        self.assertLogContent('test message')
+
+    def testJobLogReopen(self):
+        jobId = 'rogueJob'
+        self.mcp.jobs = {jobId : {'data': '',
+                                  'status': (jobstatus.FAILED, ''),
+                                  'slaveId': None}}
+
+        def fail(*args, **kwargs):
+            raise RuntimeError("function wasn't supposed to be called")
+
+        self.mcp.logJob = fail
+        self.mcp.handleResponse({ \
+                'protocolVersion': 1,
+                'node': 'bogus:slave',
+                'jobId': jobId,
+                'message': 'test message',
+                'event': 'jobLog'})
 
     def testLocalDebug(self):
         DEBUG_PATH = server.DEBUG_PATH

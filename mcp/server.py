@@ -158,10 +158,9 @@ class MCPServer(object):
         if self.cfg.logPath:
             if jobId not in self.logFiles:
                 try:
-                    self.logFiles[jobId] = \
-                        open(os.path.join( \
-                            self.cfg.logPath, 'jobs',
-                            jobId + time.strftime('-%Y-%m-%d_%H:%M:%S')), 'w')
+                    logFileName = os.path.join(self.cfg.logPath, 'jobs',
+                            jobId + time.strftime('-%Y-%m-%d_%H:%M:%S'))
+                    self.logFiles[jobId] = open(logFileName, 'w')
                 except:
                     log.error("Could not open logfile for %s" % (jobId))
                 else:
@@ -449,16 +448,18 @@ class MCPServer(object):
                 (jobstatus.FAILED, jobstatus.FINISHED):
             job['status'] = (jobstatus.FAILED, "The slave handling this job has died.")
 
-    def slaveOffline(self, slaveId):
-        # clear the job log when a slave goes down
-        jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
+    def closeJobLog(self, jobId):
         if jobId in self.logFiles:
             # compress log file
-            # DO NOT use util.execute. bombing out before finishing the stop
-            # slave process is unrecoverable!
+            # DO NOT use util.execute. there's no way to make this step atomic
+            # failure can cause unrecoverably inconsistent state!
             os.system("/bin/gzip %s" % self.logFiles[jobId].name)
             del self.logFiles[jobId]
 
+    def slaveOffline(self, slaveId):
+        # clear the job log when a slave goes down
+        jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
+        self.closeJobLog(jobId)
         self.handleDeadJobs(slaveId)
         masterId = slaveId.split(':')[0]
         if slaveId in self.jobSlaves:
@@ -579,6 +580,7 @@ class MCPServer(object):
                     if self.jobs[jobId]['status'][0] != data['status']:
                         log.info("Job %s started." % jobId)
                 elif data['status'] in (jobstatus.FINISHED, jobstatus.FAILED):
+                    self.closeJobLog(jobId)
                     self.jobs[jobId]['slaveId'] = None
                     self.jobSlaves[node]['jobId'] = None
                     self.jobSlaves[node]['status'] = slavestatus.IDLE
@@ -592,8 +594,16 @@ class MCPServer(object):
                 self.jobs[jobId]['status'] = (data['status'],
                                               data['statusMessage'])
             elif event == 'jobLog':
-                slave = self.getSlave(node)
-                self.logJob(data['jobId'], data['message'])
+                jobId = data['jobId']
+                status = self.jobs.get(jobId,
+                        {}).get('status',
+                                (None, None))[0]
+                if status not in (jobstatus.FINISHED, jobstatus.FAILED):
+                    slave = self.getSlave(node)
+                    self.logJob(data['jobId'], data['message'])
+                else:
+                    log.info('%s: message received after job was done: %s' % \
+                            (jobId, data['message']))
         else:
             raise mcp_error.ProtocolError(\
                 "Unknown Protocol Version: %d\ndata: %s" % \
