@@ -16,6 +16,7 @@ import epdb
 from conary import conaryclient
 from conary import conarycfg
 from conary.repository import trovesource
+from conary.repository.errors import InsufficientPermission
 from conary.errors import TroveNotFound
 from conary.deps import deps
 from conary.lib import util
@@ -96,7 +97,7 @@ class MCPServer(object):
         self.logFiles = {}
 
         # jobslave selection bits
-        self.jobSlaveSource = trovesource.SimpleTroveSource()
+        self.jobSlaveSource = None
         self.slaveInstallPath = set()
 
         self.cfg = cfg
@@ -210,13 +211,17 @@ class MCPServer(object):
         try:
             results = search.findTroves([troveSpec], bestFlavor=False)[troveSpec]
         except TroveNotFound:
-            log.error('Could not find an appropriate jobslave set')
+            log.warning('Trove not found while stocking jobslave set')
+            raise
+        except InsufficientPermission:
+            log.warning('Not entitled to jobslave set')
             raise
         latest = max([x[1] for x in results])
         troveSpec = [x for x in results if x[1] == latest][-1]
         log.debug('Using jobslave set %s=%s[%s]' % (troveSpec[0],
             str(troveSpec[1]), str(troveSpec[2])))
 
+        self.jobSlaveSource = trovesource.SimpleTroveSource()
         slaveSetTrove = nc.getTrove(troveSpec[0], troveSpec[1], troveSpec[2], withFiles=False)
         for slaveSpec in slaveSetTrove.iterTroveList(strongRefs = True):
             log.debug('Adding jobslave %s=%s[%s' % (slaveSpec[0], 
@@ -227,6 +232,19 @@ class MCPServer(object):
             self.slaveInstallPath.add(slaveSpec[1].trailingLabel().asString())
 
     def getVersion(self, version=None):
+        if self.jobSlaveSource is None:
+            log.info('Attempting to populate jobslave set on-demand')
+            try:
+                self.stockSlaveSource()
+            except TroveNotFound:
+                log.error('Could not find jobslave set')
+                raise mcp_error.SlaveNotFoundError("The appliance could not "
+                    "locate an appropriate jobslave set.")
+            except InsufficientPermission:
+                log.error('Could not get jobslave version because the '
+                    'entitlement is not configured correctly')
+                raise mcp_error.NotEntitledError()
+
         troves = []
         for label in self.slaveInstallPath:
             if version:
@@ -240,15 +258,9 @@ class MCPServer(object):
                 break
 
         if not troves:
-            if version:
-                # If we couldn't find a given version, try the latest
-                log.error( \
-                    'Could not find jobslave version %s, trying latest' \
-                        % version)
-                return self.getVersion()
-            else:
-                log.error('Could not find jobslave (any version)')
-                return []
+            log.error('Could not find jobslave (version=%r)' % (version,))
+            raise mcp_error.SlaveNotFoundError('The requested jobslave '
+                'could not be found')
 
         return sorted(troves)[-1]
 
@@ -645,7 +657,12 @@ class MCPServer(object):
         self.requestSlaveStatus()
         try:
             try:
-                self.stockSlaveSource()
+                try:
+                    self.stockSlaveSource()
+                except (TroveNotFound, InsufficientPermission):
+                    log.warning('Could not stock slave source on startup, '
+                        'delaying stocking until next request.')
+                    
                 lastDump = time.time()
                 while self.running:
                     self.checkIncomingCommands()

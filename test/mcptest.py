@@ -23,6 +23,7 @@ from conary.conaryclient import cmdline
 from conary import versions
 from conary.errors import TroveNotFound
 from conary.repository import trovesource
+from conary.repository.errors import InsufficientPermission
 from conary.deps import deps
 from conary.lib import util
 
@@ -573,6 +574,7 @@ class McpTest(mcp_helper.MCPTest):
 
     def testGetVersion(self):
         # mock out the conaryclient object to catch the repos call
+        self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
         self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
         self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
         try:
@@ -594,11 +596,16 @@ class McpTest(mcp_helper.MCPTest):
                 self.repos = self.MockRepos()
 
         ConaryClient = conaryclient.ConaryClient
+        mcp = server.MCPServer(self.cfg)
+        mcp.jobSlaveSource = trovesource.SimpleTroveSource()
         try:
             conaryclient.ConaryClient = MockClient
-            res = server.MCPServer.getVersion(self.mcp, '')
-            self.failIf(res != [], "Expected getVersion to return [] "
-                        "but got: %s" % str(res))
+            try:
+                res = mcp.getVersion()
+            except mcp_error.SlaveNotFoundError:
+                pass
+            else:
+                self.fail('Expected getVersion to raise SlaveNotFoundError')
         finally:
             conaryclient.ConaryClient = ConaryClient
 
@@ -616,16 +623,17 @@ class McpTest(mcp_helper.MCPTest):
         # actual version doesn't matter since the slaveSource is empty
         mcp = server.MCPServer(self.cfg)
         mcp.slaveInstallPath = set([mcp_helper.SlaveBits.label])
-        mcp.handleJob(simplejson.dumps({'type': 'build',
+        mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+        try:
+            mcp.handleJob(simplejson.dumps({'type': 'build',
                                              'UUID': UUID,
                                              'troveFlavor': 'x86',
                                              'data': {'jsversion': '0'}}))
-
-        self.failIf(UUID not in mcp.jobs,
-                    "Cook job was not recorded")
-
-        self.failIf(mcp.jobs[UUID]['status'][0] != jobstatus.FAILED,
-                "Expected job to fail on missing jobslave version")
+        except mcp_error.SlaveNotFoundError:
+            pass
+        else:
+            self.fail('Job did not fail to start with unknown '
+                'jobslave version')
 
     def testLogErrors(self):
         class Foo(object):
@@ -1167,6 +1175,10 @@ class McpTest(mcp_helper.MCPTest):
                 assert len(query) == 1
                 assert query[0][1] == slavelabel + '/12345'
                 return {query[0]: [slaveset]}
+        class UnentitledSource(MockSource):
+            def findTroves(self, query, **kwargs):
+                raise InsufficientPermission('Fake permission error')
+
         class MockClient(object):
             def iterTroveList(x, *args, **kwargs):
                 yield jobslave
@@ -1176,19 +1188,32 @@ class McpTest(mcp_helper.MCPTest):
                 x.getRepos = lambda: x
                 x.getTrove = lambda *args, **kwargs: x
                 x.getSearchSource = lambda *args, **kwargs: MockSource()
+        class UnentitledClient(MockClient):
+            def __init__(x, *args, **kwargs):
+                MockClient.__init__(x, *args, **kwargs)
+                x.getSearchSource = lambda *args, **kwargs: UnentitledSource()
 
         ConaryClient = conaryclient.ConaryClient
         try:
-            conaryclient.ConaryClient = MockClient
-
             self.mcp.cfg.slaveTroveLabel = slavelabel
+
+            conaryclient.ConaryClient = UnentitledClient
+            try:
+                self.mcp.stockSlaveSource()
+            except InsufficientPermission:
+                pass
+            else:
+                self.fail('expected stockSlaveSource to raise '
+                    'InsufficientPermission')
+
+            conaryclient.ConaryClient = MockClient
             self.mcp.stockSlaveSource()
+            self.assertNotEquals(self.mcp.jobSlaveSource, None)
             res = self.mcp.jobSlaveSource.findTrove( \
                     None, jobslave)
             self.failIf([jobslave] != res, "expected slaveSource to be stocked")
         finally:
             conaryclient.ConaryClient = ConaryClient
-            self.mcp.slaveSource = trovesource.SimpleTroveSource()
 
     def testJobLogFailure(self):
         jobId = 'rogueJob'

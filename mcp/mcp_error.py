@@ -46,3 +46,15 @@ class JobConflict(MCPError):
 class InternalServerError(MCPError):
     def __str__(self):
         return "An internal server error has occured"
+
+class NotEntitledError(MCPError):
+    def __init__(self, msg="The appliance is not correctly entitled."):
+        self.msg = msg
+    def __str__(self):
+        return self.msg
+
+class SlaveNotFoundError(MCPError):
+    def __init__(self, msg="The requested jobslave could not be found."):
+        self.msg = msg
+    def __str__(self):
+        return self.msg
