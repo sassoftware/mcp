@@ -605,16 +605,32 @@ class McpTest(mcp_helper.MCPTest):
 
         @tests: RBL-2484
         '''
+
+        bits = mcp_helper.SlaveBits
+        oldTrove = ('group-jobslave',
+            versions.ThawVersion('/products.rpath.com@rpath:js/'
+            '1000:4.0.0-25-14'),
+            deps.parseFlavor(''))
+        newTrove = ('group-jobslave',
+            versions.ThawVersion('/products.rpath.com@rpath:js-devel//'
+            'lkg.rb.rpath.com@rpath:js-4-test/2000:4.0.1-1-0.16'),
+            deps.parseFlavor(''))
+
         self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-        self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
-        self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
+        self.mcp.jobSlaveSource.addTrove(*newTrove)
+        self.mcp.jobSlaveSource.addTrove(*oldTrove)
+        self.mcp.slaveInstallPath.add('products.rpath.com@rpath:js')
+        self.mcp.slaveInstallPath.add('lkg.rb.rpath.com@rpath:js-4-test')
+
         mockedGetVersion = self.mcp.getVersion
         try:
+            # Allow getVersion to recursively call the real getVersion
+            # instead of hitting our mocked-out function.
             self.mcp.getVersion = lambda v=None: \
                 server.MCPServer.getVersion(self.mcp, v)
+
             res = self.mcp.getVersion('3.1.5')
-            ref = mcp_helper.SlaveBits.trove
-            self.failUnlessEqual(ref, res)
+            self.failUnlessEqual(res, newTrove)
         finally:
             self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
             self.mcp.getVersion = mockedGetVersion

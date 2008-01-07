@@ -254,8 +254,6 @@ class MCPServer(object):
                     None, (self.cfg.slaveTroveName, label, None))
             except TroveNotFound:
                 continue
-            if troves:
-                break
 
         if not troves and version:
             # If we don't know how to build this version, just use the
