@@ -584,6 +584,40 @@ class McpTest(mcp_helper.MCPTest):
         finally:
             self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
 
+    def testEmptySet(self):
+        '''
+        Request a slave when there are no slaves in the set. This should
+        never happen but it should be tested anyway.
+        '''
+        self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+        self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
+        try:
+            self.assertRaises(mcp_error.SlaveNotFoundError,
+                server.MCPServer.getVersion, self.mcp, '')
+        finally:
+            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+
+
+    def testGetOldVersion(self):
+        '''
+        Request a slave version not in the group. The latest jobslave should
+        be returned.
+
+        @tests: RBL-2484
+        '''
+        self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+        self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
+        self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
+        mockedGetVersion = self.mcp.getVersion
+        try:
+            self.mcp.getVersion = lambda v=None: \
+                server.MCPServer.getVersion(self.mcp, v)
+            res = self.mcp.getVersion('3.1.5')
+            ref = mcp_helper.SlaveBits.trove
+            self.failUnlessEqual(ref, res)
+        finally:
+            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+            self.mcp.getVersion = mockedGetVersion
 
     def testGetMissingVersion(self):
         ConaryClient = conaryclient.ConaryClient

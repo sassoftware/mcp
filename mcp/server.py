@@ -257,8 +257,18 @@ class MCPServer(object):
             if troves:
                 break
 
-        if not troves:
-            log.error('Could not find jobslave (version=%r)' % (version,))
+        if not troves and version:
+            # If we don't know how to build this version, just use the
+            # latest slave in the set and log a warning. This will always
+            # happen for builds originally created on 3.x and restarted on
+            # 4.x.
+            log.warning('Could not find jobslave (version=%s), falling back '
+                'to latest available', version)
+            return self.getVersion()
+        elif not troves:
+            # Attempting to fetch the latest slave failed. This should never
+            # happen.
+            log.error('Could not find latest jobslave.')
             raise mcp_error.SlaveNotFoundError('The requested jobslave '
                 'could not be found')
 
