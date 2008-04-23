@@ -187,7 +187,7 @@ class MCPTestMixin:
             handler.close()
             log.removeHandler(handler)
             
-        util.rmtree(self.mcpCfg.basePath)
+        util.rmtree(self.mcpCfg.basePath, ignore_errors=True)
         util.rmtree(self.mcpBasePath, ignore_errors = True)
 
 
