@@ -179,6 +179,14 @@ class MCPTestMixin:
                                                   self.mcpClientCfg)
     def tearDown(self):
         self.mcp.running = False
+
+        # Make sure logfiles get closed
+        import logging
+        log = logging.getLogger('')
+        for handler in log.handlers:
+            handler.close()
+            log.removeHandler(handler)
+            
         util.rmtree(self.mcpCfg.basePath)
         util.rmtree(self.mcpBasePath, ignore_errors = True)
 
