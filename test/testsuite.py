@@ -86,7 +86,7 @@ def main(argv=None, individual=True):
         suiteClass = testhelp.ConaryTestSuite
 
         def getCoverageDirs(self, environ):
-            return environ['mcp']
+            return os.getenv('MCP_PATH')
 
         def getCoverageExclusions(self, environ):
             return EXCLUDED_PATHS
