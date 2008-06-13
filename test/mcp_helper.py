@@ -186,7 +186,7 @@ class MCPTestMixin:
         for handler in log.handlers:
             handler.close()
             log.removeHandler(handler)
-            
+
         util.rmtree(self.mcpCfg.basePath, ignore_errors=True)
         util.rmtree(self.mcpBasePath, ignore_errors = True)
 
@@ -201,9 +201,6 @@ class MCPTest(testhelp.TestCase, MCPTestMixin):
         self.client = self.mcpClient
 
     def tearDown(self):
-        import logging
-        for x in logging._handlers:
-            logging.getLogger().removeHandler(x)
         testhelp.TestCase.tearDown(self)
         MCPTestMixin.tearDown(self)
 

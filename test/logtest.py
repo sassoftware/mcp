@@ -40,6 +40,7 @@ class LogTest(mcp_helper.MCPTest):
             for h in log.handlers[:]:
                 if h not in handlers:
                     log.handlers.remove(h)
+                    h.close()
             util.rmtree(tmpDir)
 
     def testStreamHandler(self):

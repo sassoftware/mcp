@@ -59,7 +59,7 @@ class DummyMultiplexedQueue(DummyQueue):
     def addDest(self, dest):
         pass
 
-class McpTest(mcp_helper.MCPTest):
+class ServerTestMixin(mcp_helper.MCPTest):
     def setUp(self):
         self._savedQueue = queue.Queue
         self._savedTopic = queue.Topic
@@ -114,6 +114,8 @@ class McpTest(mcp_helper.MCPTest):
         self.mcp.responseTopic.incoming.insert( \
             0, self.masterResponse.response.outgoing.pop())
 
+
+class McpTest(ServerTestMixin):
     def testGetSuffix(self):
         assert server.getSuffix("1#x86") == 'x86'
         assert server.getSuffix("1#x86:~i486:~i586:~i686:~sse2|1#x86_64") == 'x86_64'
@@ -572,18 +574,6 @@ class McpTest(mcp_helper.MCPTest):
         finally:
             self.mcp.cfg.logPath = logPath
 
-    def testGetVersion(self):
-        # mock out the conaryclient object to catch the repos call
-        self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-        self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
-        self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
-        try:
-            res = server.MCPServer.getVersion(self.mcp, '')
-            ref = mcp_helper.SlaveBits.trove
-            self.failUnlessEqual(ref, res)
-        finally:
-            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-
     def testEmptySet(self):
         '''
         Request a slave when there are no slaves in the set. This should
@@ -597,68 +587,6 @@ class McpTest(mcp_helper.MCPTest):
         finally:
             self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
 
-
-    def testGetOldVersion(self):
-        '''
-        Request a slave version not in the group. The latest jobslave should
-        be returned.
-
-        @tests: RBL-2484
-        '''
-
-        bits = mcp_helper.SlaveBits
-        oldTrove = ('group-jobslave',
-            versions.ThawVersion('/products.rpath.com@rpath:js/'
-            '1000:4.0.0-25-14'),
-            deps.parseFlavor(''))
-        newTrove = ('group-jobslave',
-            versions.ThawVersion('/products.rpath.com@rpath:js-devel//'
-            'lkg.rb.rpath.com@rpath:js-4-test/2000:4.0.1-1-0.16'),
-            deps.parseFlavor(''))
-
-        self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-        self.mcp.jobSlaveSource.addTrove(*newTrove)
-        self.mcp.jobSlaveSource.addTrove(*oldTrove)
-        self.mcp.slaveInstallPath.add('products.rpath.com@rpath:js')
-        self.mcp.slaveInstallPath.add('lkg.rb.rpath.com@rpath:js-4-test')
-
-        mockedGetVersion = self.mcp.getVersion
-        try:
-            # Allow getVersion to recursively call the real getVersion
-            # instead of hitting our mocked-out function.
-            self.mcp.getVersion = lambda v=None: \
-                server.MCPServer.getVersion(self.mcp, v)
-
-            res = self.mcp.getVersion('3.1.5')
-            self.failUnlessEqual(res, newTrove)
-        finally:
-            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-            self.mcp.getVersion = mockedGetVersion
-
-    def testGetMissingVersion(self):
-        ConaryClient = conaryclient.ConaryClient
-        class MockClient(ConaryClient):
-            class MockRepos(object):
-                def findTrove(self, *args, **kwargs):
-                    raise TroveNotFound('Dummy Call')
-            def __init__(self, *args, **kw):
-                ConaryClient.__init__(self, *args, **kw)
-                self.repos = self.MockRepos()
-
-        ConaryClient = conaryclient.ConaryClient
-        mcp = server.MCPServer(self.cfg)
-        mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-        try:
-            conaryclient.ConaryClient = MockClient
-            try:
-                res = mcp.getVersion()
-            except mcp_error.SlaveNotFoundError:
-                pass
-            else:
-                self.fail('Expected getVersion to raise SlaveNotFoundError')
-        finally:
-            conaryclient.ConaryClient = ConaryClient
-
     def testDummyCook(self):
         self.mcp.handleJob(simplejson.dumps({'type': 'cook',
                                              'UUID': 'dummy-cook-47',
@@ -666,24 +594,6 @@ class McpTest(mcp_helper.MCPTest):
 
         self.failIf('dummy-cook-47' not in self.mcp.jobs,
                     "Cook job was not recorded")
-
-    def testBadJsVersion(self):
-        UUID =  'dummy-cook-47'
-        # test a bogus jsversion to account for proper mcp reaction
-        # actual version doesn't matter since the slaveSource is empty
-        mcp = server.MCPServer(self.cfg)
-        mcp.slaveInstallPath = set([mcp_helper.SlaveBits.label])
-        mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-        try:
-            mcp.handleJob(simplejson.dumps({'type': 'build',
-                                             'UUID': UUID,
-                                             'troveFlavor': 'x86',
-                                             'data': {'jsversion': '0'}}))
-        except mcp_error.SlaveNotFoundError:
-            pass
-        else:
-            self.fail('Job did not fail to start with unknown '
-                'jobslave version')
 
     def testLogErrors(self):
         class Foo(object):
@@ -817,12 +727,17 @@ class McpTest(mcp_helper.MCPTest):
     def testJobLog(self):
         jobId = 'dummy-build-96'
         slaveId = 'master:slave'
+
+        # Send a log message to open the log file
         self.mcp.handleResponse({'node' : slaveId,
                                  'protocolVersion' : 1,
                                  'event' : 'jobLog',
                                  'jobId' : jobId,
                                  'message' : 'fake message'})
         self.failIf(jobId not in self.mcp.logFiles, "log file was not opened")
+
+        # Close the logfile so we don't leave filehandles open
+        self.mcp.closeJobLog(jobId)
 
     def testBadResponseProtocol(self):
         jobId = 'dummy-build-54'
@@ -1535,6 +1450,129 @@ class McpTest(mcp_helper.MCPTest):
         ref = ['x86 line 1', 'x86_64 line 1', 'x86_64 line 2']
         self.assertEquals(res, ref)
 
+
+class GetVersionTest(ServerTestMixin):
+    '''
+    Version of MCPTest that uses the original getVersion rather than
+    the mock object.
+    '''
+
+    def setUp(self):
+        ServerTestMixin.setUp(self)
+
+        # Put back getVersion so we can test the original code
+        import new
+        self.mcp.getVersion = new.instancemethod(server.MCPServer.getVersion,
+            self.mcp, server.MCPServer)
+
+    def testGetVersion(self):
+        def stockSlaveSource():
+            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+            self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
+            self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
+        self.mcp.stockSlaveSource = stockSlaveSource
+
+        res = server.MCPServer.getVersion(self.mcp, '')
+        ref = mcp_helper.SlaveBits.trove
+        self.failUnlessEqual(ref, res)
+        
+    def testGetOldVersion(self):
+        '''
+        Request a slave version not in the group. The latest jobslave should
+        be returned.
+
+        @tests: RBL-2484
+        '''
+
+        bits = mcp_helper.SlaveBits
+        oldTrove = ('group-jobslave',
+            versions.ThawVersion('/products.rpath.com@rpath:js/'
+            '1000:4.0.0-25-14'),
+            deps.parseFlavor(''))
+        newTrove = ('group-jobslave',
+            versions.ThawVersion('/products.rpath.com@rpath:js-devel//'
+            'lkg.rb.rpath.com@rpath:js-4-test/2000:4.0.1-1-0.16'),
+            deps.parseFlavor(''))
+
+        def stockSlaveSource():
+            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+            self.mcp.jobSlaveSource.addTrove(*newTrove)
+            self.mcp.jobSlaveSource.addTrove(*oldTrove)
+            self.mcp.slaveInstallPath.add('products.rpath.com@rpath:js')
+            self.mcp.slaveInstallPath.add('lkg.rb.rpath.com@rpath:js-4-test')
+        self.mcp.stockSlaveSource = stockSlaveSource
+
+        res = self.mcp.getVersion('3.1.5')
+        self.failUnlessEqual(res, newTrove)
+
+    def testGetMissingVersion(self):
+        '''
+        Test that a TroveNotFound is caught and re-thrown as an MCP
+        error.
+        '''
+        ConaryClient = conaryclient.ConaryClient
+        class MockClient(ConaryClient):
+            class MockRepos(object):
+                def findTroves(xself, *args, **kwargs):
+                    raise TroveNotFound('Dummy Call')
+                def searchWithFlavor(xself):
+                    pass
+            def __init__(self, *args, **kw):
+                ConaryClient.__init__(self, *args, **kw)
+                self.repos = self.MockRepos()
+
+        conaryclient.ConaryClient = MockClient
+        try:
+            try:
+                res = self.mcp.getVersion()
+            except mcp_error.SlaveNotFoundError:
+                pass
+            else:
+                self.fail('Expected getVersion to raise SlaveNotFoundError')
+        finally:
+            conaryclient.ConaryClient = ConaryClient
+
+    def testBadJsVersion(self):
+        '''
+        Test that a bad jobslave set raises an MCP error.
+        '''
+        UUID =  'dummy-cook-47'
+
+        # Make the stock method create an empty trove source so that
+        # fetching the slave will fail.
+        def stockNothing():
+            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+        self.mcp.stockSlaveSource = stockNothing
+
+        try:
+            self.mcp.handleJob(simplejson.dumps({'type': 'build',
+                                             'UUID': UUID,
+                                             'troveFlavor': 'x86',
+                                             'data': {'jsversion': '0'}}))
+        except mcp_error.SlaveNotFoundError:
+            pass
+        else:
+            self.fail('Job did not fail to start with unknown '
+                'jobslave version')
+
+    def testSlaveSetUpdated(self):
+        '''
+        Ensure that the slave source is updated each time a job
+        is started.
+        '''
+
+        self.mcp._stock_called = 0
+        def stockSlaveSource():
+            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
+            self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
+            self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
+            self.mcp._stock_called += 1
+        self.mcp.stockSlaveSource = stockSlaveSource
+
+        for i in range(3):
+            self.mcp.getVersion()
+
+        self.failUnlessEqual(self.mcp._stock_called, 3)
 
 if __name__ == "__main__":
     testsuite.main()

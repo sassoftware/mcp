@@ -203,47 +203,47 @@ class MCPServer(object):
         if self.cfg.slaveSetVersion:
             query_version += '/' + self.cfg.slaveSetVersion
         else:
-            log.info('Running without an explicit jobslave set version. ' \
+            log.warning('Running without an explicit jobslave set version. '
                 'Using latest on label.')
         troveSpec = (SLAVE_SET_NAME, query_version, None)
-        log.debug('Jobslave set query: %s' % repr(troveSpec))
+        log.debug('Jobslave set query: %s=%s[%s]' % troveSpec)
 
         try:
-            results = search.findTroves([troveSpec], bestFlavor=False)[troveSpec]
+            results = search.findTroves([troveSpec],
+                bestFlavor=False)[troveSpec]
         except TroveNotFound:
-            log.warning('Trove not found while stocking jobslave set')
+            log.error('Trove not found while stocking jobslave set. '
+                'Query: %s=%s', SLAVE_SET_NAME, query_version)
             raise
         except InsufficientPermission:
-            log.warning('Not entitled to jobslave set')
+            log.error('Not entitled to jobslave set. Query: %s=%s',
+                SLAVE_SET_NAME, query_version)
             raise
-        latest = max([x[1] for x in results])
-        troveSpec = [x for x in results if x[1] == latest][-1]
-        log.debug('Using jobslave set %s=%s[%s]' % (troveSpec[0],
-            str(troveSpec[1]), str(troveSpec[2])))
+        latest = max(x[1] for x in results)
+        troveSpec = sorted(x for x in results if x[1] == latest)[0]
+        log.debug('Using jobslave set %s=%s[%s]' % troveSpec)
 
         self.jobSlaveSource = trovesource.SimpleTroveSource()
-        slaveSetTrove = nc.getTrove(troveSpec[0], troveSpec[1], troveSpec[2], withFiles=False)
+        slaveSetTrove = nc.getTrove(troveSpec[0], troveSpec[1], troveSpec[2],
+            withFiles=False)
         for slaveSpec in slaveSetTrove.iterTroveList(strongRefs = True):
-            log.debug('Adding jobslave %s=%s[%s' % (slaveSpec[0], 
-                str(slaveSpec[1]), str(slaveSpec[2])))
+            log.debug('Adding jobslave %s=%s[%s]' % slaveSpec)
             self.jobSlaveSource.addTrove(*slaveSpec)
 
             # Add slave to install path for later retrieval
             self.slaveInstallPath.add(slaveSpec[1].trailingLabel().asString())
 
     def getVersion(self, version=None):
-        if self.jobSlaveSource is None:
-            log.info('Attempting to populate jobslave set on-demand')
-            try:
-                self.stockSlaveSource()
-            except TroveNotFound:
-                log.error('Could not find jobslave set')
-                raise mcp_error.SlaveNotFoundError("The appliance could not "
-                    "locate an appropriate jobslave set.")
-            except InsufficientPermission:
-                log.error('Could not get jobslave version because the '
-                    'entitlement is not configured correctly')
-                raise mcp_error.NotEntitledError()
+        try:
+            self.stockSlaveSource()
+        except TroveNotFound:
+            log.error('Could not find jobslave set')
+            raise mcp_error.SlaveNotFoundError("The appliance could not "
+                "locate an appropriate jobslave set.")
+        except InsufficientPermission:
+            log.error('Could not get jobslave version because the '
+                'entitlement is not configured correctly')
+            raise mcp_error.NotEntitledError()
 
         troves = []
         for label in self.slaveInstallPath:
@@ -473,8 +473,9 @@ class MCPServer(object):
             # compress log file
             # DO NOT use util.execute. there's no way to make this step atomic
             # failure can cause unrecoverably inconsistent state!
-            os.system("/bin/gzip %s" % self.logFiles[jobId].name)
+            logName = self.logFiles[jobId].name
             del self.logFiles[jobId]
+            os.system("/bin/gzip %s" % logName)
 
     def slaveOffline(self, slaveId):
         # clear the job log when a slave goes down
@@ -665,12 +666,6 @@ class MCPServer(object):
         self.requestSlaveStatus()
         try:
             try:
-                try:
-                    self.stockSlaveSource()
-                except (TroveNotFound, InsufficientPermission):
-                    log.warning('Could not stock slave source on startup, '
-                        'delaying stocking until next request.')
-                    
                 lastDump = time.time()
                 while self.running:
                     self.checkIncomingCommands()
