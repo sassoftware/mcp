@@ -1,11 +1,15 @@
 # insert copyright notice
 
 import logging
+import socket
 import stomp
 import sys
 import threading
 import time
 import traceback
+
+import mcp_error
+
 
 def logErrors(func):
     def wrapper(self, *args, **kwargs):
@@ -66,7 +70,11 @@ class Queue(object):
         self.port = port
 
         self.inbound = []
-        self.connection = stomp.Connection(host, port)
+        try:
+            self.connection = stomp.Connection(host, port)
+        except socket.error, e_value:
+            raise mcp_error.NetworkError(str(e_value))
+
         self.connection.addlistener(self)
         self.connection.start()
         if namespace:

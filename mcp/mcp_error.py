@@ -47,6 +47,12 @@ class InternalServerError(MCPError):
     def __str__(self):
         return "An internal server error has occured"
 
+class NetworkError(MCPError):
+    def __init__(self, msg = "An unknown network error has occured"):
+        self.msg = msg
+    def __str__(self):
+        return self.msg
+
 class NotEntitledError(MCPError):
     def __init__(self, msg="The appliance is not correctly entitled."):
         self.msg = msg
