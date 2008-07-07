@@ -18,7 +18,7 @@ import tempfile
 
 from mcp import queue
 from mcp import constants
-from conary import conaryclient
+from conary import conaryclient, conarycfg
 from conary.conaryclient import cmdline
 from conary import versions
 from conary.errors import TroveNotFound
@@ -973,14 +973,11 @@ class McpTest(ServerTestMixin):
         def newSleep(*args, **kwargs):
             self.mcp.running = False
 
-        stockSlaveSource = self.mcp.stockSlaveSource
         try:
-            self.mcp.stockSlaveSource = lambda: None
             time.sleep = newSleep
             self.mcp.run()
             self.assertEquals(self.mcp.running, False)
         finally:
-            self.mcp.stockSlaveSource = stockSlaveSource
             time.sleep = sleep
 
     def testWaitingJobNumber(self):
@@ -1131,8 +1128,27 @@ class McpTest(ServerTestMixin):
                 '/products.rpath.com@rpath:js/12345-1-1'), \
                 deps.parseFlavor(''))
         slavelabel = slaveset[1].trailingLabel().asString()
-        # NVF for jobslave we eventually return
-        jobslave = mcp_helper.SlaveBits.trove
+
+        # NVF for the newest jobslave
+        new_version = mcp_helper.SlaveBits.versionObject.copy()
+        new_version.incrementBuildCount()
+        new_version.setTimeStamps([600.0])
+        new_revision = new_version.trailingRevision().getVersion()
+        new_tup = ('group-jobslave', new_version, None)
+
+        # NVF for a slightly old jobslave
+        older_version = mcp_helper.SlaveBits.versionObject.copy()
+        older_version.setTimeStamps([500.0])
+        older_tup = ('group-jobslave', older_version, None)
+
+        # NVF for an older jobslave (with different revision)
+        oldest_revision = versions.Revision('2.0.0-1-1')
+        oldest_version = new_version.branch().createVersion(oldest_revision)
+        oldest_version.setTimeStamps([100.0])
+        oldest_revision = oldest_revision.getVersion()
+        oldest_tup = ('group-jobslave', oldest_version, None)
+
+        refSlaveDict = {new_revision: new_tup[:2], oldest_revision: oldest_tup[:2]}
 
         class MockSource(object):
             # Mocks the source used to look up the jobslave set
@@ -1146,7 +1162,9 @@ class McpTest(ServerTestMixin):
 
         class MockClient(object):
             def iterTroveList(x, *args, **kwargs):
-                yield jobslave
+                yield new_tup
+                yield older_tup
+                yield oldest_tup
             def __init__(x, *args, **kw):
                 x.db = x
                 x.findTrove = lambda *args, **kwargs: [(1, 2, 3)]
@@ -1159,24 +1177,20 @@ class McpTest(ServerTestMixin):
                 x.getSearchSource = lambda *args, **kwargs: UnentitledSource()
 
         ConaryClient = conaryclient.ConaryClient
+        ConaryConfiguration = conarycfg.ConaryConfiguration
         try:
             self.mcp.cfg.slaveTroveLabel = slavelabel
+            conarycfg.ConaryConfiguration = lambda x: None # no-op for speed
 
+            # First with an unentitled client
             conaryclient.ConaryClient = UnentitledClient
-            try:
-                self.mcp.stockSlaveSource()
-            except InsufficientPermission:
-                pass
-            else:
-                self.fail('expected stockSlaveSource to raise '
-                    'InsufficientPermission')
+            self.failUnlessRaises(mcp_error.NotEntitledError, self.mcp.getSlaveList)
 
+            # Now with a working one
             conaryclient.ConaryClient = MockClient
-            self.mcp.stockSlaveSource()
-            self.assertNotEquals(self.mcp.jobSlaveSource, None)
-            res = self.mcp.jobSlaveSource.findTrove( \
-                    None, jobslave)
-            self.failIf([jobslave] != res, "expected slaveSource to be stocked")
+            slaveDict, maxRevision = self.mcp.getSlaveList()
+            self.failUnlessEqual(slaveDict, refSlaveDict)
+            self.failUnlessEqual(maxRevision, new_revision)
         finally:
             conaryclient.ConaryClient = ConaryClient
 
@@ -1466,14 +1480,9 @@ class GetVersionTest(ServerTestMixin):
             self.mcp, server.MCPServer)
 
     def testGetVersion(self):
-        def stockSlaveSource():
-            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-            self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
-            self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
-        self.mcp.stockSlaveSource = stockSlaveSource
-
+        self.mcp.getSlaveList = lambda: mcp_helper.SlaveBits.slaveListRV
         res = server.MCPServer.getVersion(self.mcp, '')
-        ref = mcp_helper.SlaveBits.trove
+        ref = mcp_helper.SlaveBits.NV
         self.failUnlessEqual(ref, res)
         
     def testGetOldVersion(self):
@@ -1484,26 +1493,23 @@ class GetVersionTest(ServerTestMixin):
         @tests: RBL-2484
         '''
 
-        bits = mcp_helper.SlaveBits
-        oldTrove = ('group-jobslave',
-            versions.ThawVersion('/products.rpath.com@rpath:js/'
-            '1000:4.0.0-25-14'),
-            deps.parseFlavor(''))
-        newTrove = ('group-jobslave',
-            versions.ThawVersion('/products.rpath.com@rpath:js-devel//'
-            'lkg.rb.rpath.com@rpath:js-4-test/2000:4.0.1-1-0.16'),
-            deps.parseFlavor(''))
+        slaveDict = {
+            '1000': ('group-jobslave',
+                versions.ThawVersion('/products.rpath.com@rpath:js/'
+                    '1000:4.0.0-25-14')),
+            '2000': ('group-jobslave',
+                versions.ThawVersion('/products.rpath.com@rpath:js-devel//'
+                    'lkg.rb.rpath.com@rpath:js-4-test/2000:4.0.1-1-0.16')),
+          }
+        self.mcp.getSlaveList = lambda: (slaveDict, '2000')
 
-        def stockSlaveSource():
-            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-            self.mcp.jobSlaveSource.addTrove(*newTrove)
-            self.mcp.jobSlaveSource.addTrove(*oldTrove)
-            self.mcp.slaveInstallPath.add('products.rpath.com@rpath:js')
-            self.mcp.slaveInstallPath.add('lkg.rb.rpath.com@rpath:js-4-test')
-        self.mcp.stockSlaveSource = stockSlaveSource
+        # Unknown version -> latest
+        res = self.mcp.getVersion('500')
+        self.failUnlessEqual(res, slaveDict['2000'])
 
-        res = self.mcp.getVersion('3.1.5')
-        self.failUnlessEqual(res, newTrove)
+        # Known version -> requested
+        res = self.mcp.getVersion('1000')
+        self.failUnlessEqual(res, slaveDict['1000'])
 
     def testGetMissingVersion(self):
         '''
@@ -1532,47 +1538,6 @@ class GetVersionTest(ServerTestMixin):
         finally:
             conaryclient.ConaryClient = ConaryClient
 
-    def testBadJsVersion(self):
-        '''
-        Test that a bad jobslave set raises an MCP error.
-        '''
-        UUID =  'dummy-cook-47'
-
-        # Make the stock method create an empty trove source so that
-        # fetching the slave will fail.
-        def stockNothing():
-            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-        self.mcp.stockSlaveSource = stockNothing
-
-        try:
-            self.mcp.handleJob(simplejson.dumps({'type': 'build',
-                                             'UUID': UUID,
-                                             'troveFlavor': 'x86',
-                                             'data': {'jsversion': '0'}}))
-        except mcp_error.SlaveNotFoundError:
-            pass
-        else:
-            self.fail('Job did not fail to start with unknown '
-                'jobslave version')
-
-    def testSlaveSetUpdated(self):
-        '''
-        Ensure that the slave source is updated each time a job
-        is started.
-        '''
-
-        self.mcp._stock_called = 0
-        def stockSlaveSource():
-            self.mcp.jobSlaveSource = trovesource.SimpleTroveSource()
-            self.mcp.jobSlaveSource.addTrove(*mcp_helper.SlaveBits.trove)
-            self.mcp.slaveInstallPath.add(mcp_helper.SlaveBits.label)
-            self.mcp._stock_called += 1
-        self.mcp.stockSlaveSource = stockSlaveSource
-
-        for i in range(3):
-            self.mcp.getVersion()
-
-        self.failUnlessEqual(self.mcp._stock_called, 3)
 
 if __name__ == "__main__":
     testsuite.main()

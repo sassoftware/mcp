@@ -15,7 +15,6 @@ import epdb
 
 from conary import conaryclient
 from conary import conarycfg
-from conary.repository import trovesource
 from conary.repository.errors import InsufficientPermission
 from conary.errors import TroveNotFound
 from conary.deps import deps
@@ -95,10 +94,6 @@ class MCPServer(object):
         self.jobs = {}
         self.jobMasters = {}
         self.logFiles = {}
-
-        # jobslave selection bits
-        self.jobSlaveSource = None
-        self.slaveInstallPath = set()
 
         self.cfg = cfg
         if cfg.logPath:
@@ -190,8 +185,12 @@ class MCPServer(object):
         n, v, f = cc.db.findTrove(None, (group, None, None))[0]
         return v.trailingLabel().asString()
 
-    def stockSlaveSource(self):
-        '''Populate our local trove source from a compatible remote jobslave set'''
+    def getSlaveList(self):
+        '''
+        Obtain a list of jobslaves and return a tuple of a dictionary
+        mapping revision to (name, version), and the latest slave
+        revision.
+        '''
 
         cfg = conarycfg.ConaryConfiguration(True)
         cc = conaryclient.ConaryClient(cfg)
@@ -208,69 +207,71 @@ class MCPServer(object):
         troveSpec = (SLAVE_SET_NAME, query_version, None)
         log.debug('Jobslave set query: %s=%s[%s]' % troveSpec)
 
+        # Try to locate the specified jobslave set
         try:
             results = search.findTroves([troveSpec],
                 bestFlavor=False)[troveSpec]
         except TroveNotFound:
             log.error('Trove not found while stocking jobslave set. '
                 'Query: %s=%s', SLAVE_SET_NAME, query_version)
-            raise
+            raise mcp_error.SlaveNotFoundError("The appliance could not "
+                "locate an appropriate jobslave set.")
         except InsufficientPermission:
             log.error('Not entitled to jobslave set. Query: %s=%s',
                 SLAVE_SET_NAME, query_version)
-            raise
+            raise mcp_error.NotEntitledError()
+
         latest = max(x[1] for x in results)
         troveSpec = sorted(x for x in results if x[1] == latest)[0]
         log.debug('Using jobslave set %s=%s[%s]' % troveSpec)
 
-        self.jobSlaveSource = trovesource.SimpleTroveSource()
-        slaveSetTrove = nc.getTrove(troveSpec[0], troveSpec[1], troveSpec[2],
-            withFiles=False)
-        for slaveSpec in slaveSetTrove.iterTroveList(strongRefs = True):
-            log.debug('Adding jobslave %s=%s[%s]' % slaveSpec)
-            self.jobSlaveSource.addTrove(*slaveSpec)
+        # Create a mapping of revision -> (name, version) from the
+        # contents of the jobslave set
+        slaveSetTrove = nc.getTrove(troveSpec[0], troveSpec[1],
+            troveSpec[2], withFiles=False)
+        slaveDict = {}
+        for name, version, flavor in slaveSetTrove.iterTroveList(
+          strongRefs=True):
+            log.debug('Adding jobslave %s=%s[%s]' % (name, version, flavor))
+            revision = version.trailingRevision().getVersion()
 
-            # Add slave to install path for later retrieval
-            self.slaveInstallPath.add(slaveSpec[1].trailingLabel().asString())
-
-    def getVersion(self, version=None):
-        try:
-            self.stockSlaveSource()
-        except TroveNotFound:
-            log.error('Could not find jobslave set')
-            raise mcp_error.SlaveNotFoundError("The appliance could not "
-                "locate an appropriate jobslave set.")
-        except InsufficientPermission:
-            log.error('Could not get jobslave version because the '
-                'entitlement is not configured correctly')
-            raise mcp_error.NotEntitledError()
-
-        troves = []
-        for label in self.slaveInstallPath:
-            if version:
-                label += '/' + version
-            try:
-                troves = self.jobSlaveSource.findTrove( \
-                    None, (self.cfg.slaveTroveName, label, None))
-            except TroveNotFound:
+            if revision in slaveDict and version < slaveDict[revision][1]:
+                # Don't replace if it's older
                 continue
 
-        if not troves and version:
-            # If we don't know how to build this version, just use the
-            # latest slave in the set and log a warning. This will always
-            # happen for builds originally created on 3.x and restarted on
-            # 4.x.
-            log.warning('Could not find jobslave (version=%s), falling back '
-                'to latest available', version)
-            return self.getVersion()
-        elif not troves:
-            # Attempting to fetch the latest slave failed. This should never
-            # happen.
-            log.error('Could not find latest jobslave.')
-            raise mcp_error.SlaveNotFoundError('The requested jobslave '
-                'could not be found')
+            slaveDict[revision] = (name, version)
 
-        return sorted(troves)[-1]
+        if not slaveDict:
+            # Empty set?
+            log.error('Got empty jobslave set! %s=%s[%s]' % troveSpec)
+            raise mcp_error.SlaveNotFoundError("The appliance could not "
+                "locate any jobslaves.")
+
+        # Get the latest version out of all the slave tups
+        maxVersion = max(x[1] for x in slaveSetTrove.iterTroveList(
+            strongRefs=True))
+        maxRevision = maxVersion.trailingRevision().getVersion()
+
+        return slaveDict, maxRevision
+
+    def getVersion(self, version=None):
+        slaveDict, maxRevision = self.getSlaveList()
+
+        if version:
+            if version in slaveDict:
+                slave = slaveDict[version]
+            else:
+                # If we don't know how to build this version, just use
+                # the latest slave in the set and log a warning. This
+                # will always happen for builds originally created on
+                # 3.x and restarted on 4.x.
+                log.warning('Could not find jobslave (version %r), falling '
+                    'back to latest (version %r)', version, maxRevision)
+                slave = slaveDict[maxRevision]
+        else:
+            slave = slaveDict[maxRevision]
+
+        return slave
 
     def addJobQueue(self, suffix):
         jobName = 'job:%s' % suffix

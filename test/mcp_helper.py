@@ -32,6 +32,9 @@ class SlaveBits:
     versionObject = versions.VersionFromString(rbranch)
 
     trove = ('group-jobslave', versionObject, deps.parseFlavor(''))
+    NV = ('group-jobslave', versionObject)
+    slaveDict = {version: trove[:2]}
+    slaveListRV = (slaveDict, version)
 
 class DummyConnection(object):
     def __init__(self, *args, **kwargs):
@@ -136,8 +139,7 @@ class ThreadedMCP(server.MCPServer, threading.Thread):
         else:
             v += '/' + SlaveBits.revision
         v = versions.VersionFromString(v)
-        f = ''
-        return n, v, f
+        return n, v
 
 class MCPTestMixin:
     def getMCPConfig(self):
