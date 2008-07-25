@@ -127,7 +127,11 @@ class Queue(object):
             self.lock.release()
 
     def send(self, message):
-        self.connection.send(self.connectionName, message)
+        self.lock.acquire()
+        try:
+            self.connection.send(self.connectionName, message)
+        finally:
+            self.lock.release()
 
     def incrementLimit(self, increment = 1):
         self.lock.acquire()
@@ -240,7 +244,11 @@ class MultiplexedQueue(Queue):
         self.connection = None
 
     def send(self, dest, message):
-        self.connection.send(self.connectionBase + '/' + dest, message)
+        self.lock.acquire()
+        try:
+            self.connection.send(self.connectionBase + '/' + dest, message)
+        finally:
+            self.lock.release()
 
 class Topic(Queue):
     type = 'topic'
