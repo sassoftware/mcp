@@ -3,6 +3,7 @@
 #
 # Copyright (c) 2004-2006 rPath, Inc.
 #
+import bootstrap
 
 import bdb
 import cPickle
@@ -42,7 +43,7 @@ def setup():
     os.environ.update(dict(CONARY_PATH=conaryPath, CONARY_TEST_PATH=conaryTestPath,
         MCP_PATH=mcpPath, MCP_TEST_PATH=mcpTestPath, PYTHONPATH=(':'.join(sys.path))))
 
-    import testhelp
+    from testrunner import testhelp
     testPath = testhelp.getTestPath()
 
     global conaryDir
@@ -55,7 +56,7 @@ def setup():
     from conary.lib import coveragehook
 
     # import tools normally expected in findTrove.
-    from testhelp import context, TestCase, findPorts, SkipTestException
+    from testrunner.testhelp import context, TestCase, findPorts, SkipTestException
     sys.modules[__name__].context = context
     sys.modules[__name__].TestCase = TestCase
     sys.modules[__name__].findPorts = findPorts
@@ -80,7 +81,7 @@ def isIndividual():
 EXCLUDED_PATHS = ['test', 'setup.py']
 
 def main(argv=None, individual=True):
-    import testhelp
+    from testrunner import testhelp
     testhelp.isIndividual = isIndividual
     class rBuilderTestSuiteHandler(testhelp.TestSuiteHandler):
         suiteClass = testhelp.ConaryTestSuite
