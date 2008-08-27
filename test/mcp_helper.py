@@ -7,7 +7,7 @@
 
 import os, sys
 import testsuite
-import testhelp
+from testrunner import testhelp
 import random
 import tempfile
 
