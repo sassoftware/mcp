@@ -35,12 +35,11 @@ def setup():
         sys.exit(1)
 
     conaryPath      = os.getenv('CONARY_PATH')
-    conaryTestPath  = os.getenv('CONARY_TEST_PATH', os.path.join(conaryPath, '..', 'conary-test'))
     mcpPath         = os.getenv('MCP_PATH',         '..')
     mcpTestPath     = os.getenv('MCP_TEST_PATH',    '.')
 
-    sys.path = [os.path.realpath(x) for x in (mcpPath, mcpTestPath, conaryPath, conaryTestPath)] + sys.path
-    os.environ.update(dict(CONARY_PATH=conaryPath, CONARY_TEST_PATH=conaryTestPath,
+    sys.path = [os.path.realpath(x) for x in (mcpPath, mcpTestPath, conaryPath)] + sys.path
+    os.environ.update(dict(CONARY_PATH=conaryPath,
         MCP_PATH=mcpPath, MCP_TEST_PATH=mcpTestPath, PYTHONPATH=(':'.join(sys.path))))
 
     from testrunner import testhelp
