@@ -283,16 +283,36 @@ class McpTest(ServerTestMixin):
         data['action'] = 'startJob'
         data['data'] = build
         data['uuid'] = 'fake_uuid'
+        data['returnViaTopic'] = True
         data['protocolVersion'] = 1
 
         self.mcp.commandQueue.incoming = [simplejson.dumps(data)]
         self.mcp.checkIncomingCommands()
 
-        assert self.mcp.postQueue.outgoing
-        res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        assert self.mcp.postTopic.outgoing
+        res = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert res == [True, ['IllegalCommand', 'Unknown action: startJob']]
 
         # now test a legal command
+        data['action'] = 'submitJob'
+        self.mcp.commandQueue.incoming = [simplejson.dumps(data)]
+        self.mcp.checkIncomingCommands()
+
+        assert self.mcp.postTopic.outgoing
+        res = simplejson.loads(self.mcp.postTopic.outgoing.pop())
+
+        assert res == [False, u'test.rpath.local-build-0-0']
+
+    def testOldClientCommandResponse(self):
+        build = self.getJsonBuild()
+        data = {}
+        # test an illegal command
+        data['action'] = 'startJob'
+        data['data'] = build
+        data['uuid'] = 'fake_uuid'
+        data['protocolVersion'] = 1
+        # Don't send returnViaTopic
+
         data['action'] = 'submitJob'
         self.mcp.commandQueue.incoming = [simplejson.dumps(data)]
         self.mcp.checkIncomingCommands()
@@ -314,10 +334,11 @@ class McpTest(ServerTestMixin):
         self.assertLogContent('no post address')
 
         self.mcp.commandQueue.incoming = \
-            [simplejson.dumps({'absolutely' : 'Wrong', 'uuid' : 'bad'})]
+            [simplejson.dumps({'absolutely' : 'Wrong', 'uuid' : 'bad',
+                    'returnViaTopic': True})]
         self.mcp.checkIncomingCommands()
 
-        assert simplejson.loads(self.mcp.postQueue.outgoing.pop()) == \
+        assert simplejson.loads(self.mcp.postTopic.outgoing.pop()) == \
             [True, ['InternalServerError',
                     "An internal server error has occured"]]
 
@@ -332,14 +353,14 @@ class McpTest(ServerTestMixin):
         dataCommand = self.client.command.outgoing[0]
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.postQueue.outgoing.pop()
+        res = self.mcp.postTopic.outgoing.pop()
 
         assert res == '[false, "test.rpath.local-build-0-0"]'
         assert self.mcp.commandQueue.incoming == []
 
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.postQueue.outgoing.pop()
+        res = self.mcp.postTopic.outgoing.pop()
         assert res == '[true, ["JobConflict", "Job already in progress"]]'
 
     def testJobConflict2(self):
@@ -360,7 +381,7 @@ class McpTest(ServerTestMixin):
         dataCommand = self.client.command.outgoing[0]
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.postQueue.outgoing.pop()
+        res = self.mcp.postTopic.outgoing.pop()
 
         assert res == '[true, ["JobConflict", "Job already in progress"]]'
 
@@ -371,7 +392,7 @@ class McpTest(ServerTestMixin):
         dataCommand = self.client.command.outgoing[0]
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.postQueue.outgoing.pop()
+        res = self.mcp.postTopic.outgoing.pop()
 
         assert res == '[true, ["UnknownJobType", "Unknown job type: random"]]'
 
@@ -382,7 +403,7 @@ class McpTest(ServerTestMixin):
         dataCommand = self.client.command.outgoing[0]
         self.mcp.commandQueue.incoming = [dataCommand]
         self.mcp.checkIncomingCommands()
-        res = self.mcp.postQueue.outgoing.pop()
+        res = self.mcp.postTopic.outgoing.pop()
 
         self.failUnlessEqual(res, '[false, null]')
 
@@ -472,8 +493,9 @@ class McpTest(ServerTestMixin):
         self.assertLogContent('no post address')
 
     def testHandleComProtocol(self):
-        self.mcp.handleCommand({'protocolVersion' : 999999999999, 'uuid' : ''})
-        res = self.mcp.postQueue.outgoing.pop()
+        self.mcp.handleCommand({'protocolVersion' : 999999999999, 'uuid' : '',
+                'returnViaTopic': True})
+        res = self.mcp.postTopic.outgoing.pop()
         assert res == \
            '[true, ["ProtocolError", "Unknown Protocol Version: 999999999999"]]'
 
@@ -532,28 +554,32 @@ class McpTest(ServerTestMixin):
     def testBadJobId(self):
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
                                 'action' : 'jobStatus',
-                                'jobId' : 'bad-job-id'})
-        res = self.mcp.postQueue.outgoing.pop()
+                                'jobId' : 'bad-job-id',
+                                'returnViaTopic': True})
+        res = self.mcp.postTopic.outgoing.pop()
         assert res == '[true, ["UnknownJob", "Unknown job Id: bad-job-id"]]'
 
     def testMissingJobId(self):
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
-                                'action' : 'jobStatus'})
-        res = self.mcp.postQueue.outgoing.pop()
+                                'action' : 'jobStatus',
+                                'returnViaTopic': True})
+        res = self.mcp.postTopic.outgoing.pop()
         assert res == '[false, {}]'
 
     def testClearCache(self):
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
                                 'action' : 'clearCache',
-                                'masterId' : 'testMaster'})
-        res = self.mcp.postQueue.outgoing.pop()
+                                'masterId' : 'testMaster',
+                                'returnViaTopic': True})
+        res = self.mcp.postTopic.outgoing.pop()
 
         assert res == '[true, ["UnknownHost", "Unknown Host: testMaster"]]'
         self.mcp.getMaster('testMaster')
         self.mcp.controlTopic.outgoing = []
         self.mcp.handleCommand({'protocolVersion' : 1, 'uuid' : 'test',
                                 'action' : 'clearCache',
-                                'masterId' : 'testMaster'})
+                                'masterId' : 'testMaster',
+                                'returnViaTopic': True})
         control = simplejson.loads(self.mcp.controlTopic.outgoing.pop())
         self.checkValue(control, 'action', 'clearImageCache')
         self.checkValue(control, 'node', 'testMaster')
@@ -618,7 +644,7 @@ class McpTest(ServerTestMixin):
         self.mcp.responseTopic = MockDisc()
         self.mcp.controlTopic = MockDisc()
         self.mcp.jobQueues['job:x86'] = MockDisc()
-        self.mcp.postQueue = MockDisc()
+        self.mcp.postTopic = MockDisc()
 
         self.mcp.running = True
         self.mcp.disconnect()
@@ -630,7 +656,7 @@ class McpTest(ServerTestMixin):
                     "Control Topic was not disconnected")
         self.failIf(self.mcp.jobQueues['job:x86'].connected,
                     "Job Queue was not disconnected")
-        self.failIf(self.mcp.postQueue.connected,
+        self.failIf(self.mcp.postTopic.connected,
                     "Post Queue was not disconnected")
 
     def testUnkJobStart(self):
@@ -843,8 +869,9 @@ class McpTest(ServerTestMixin):
     def testCommandJSVersion(self):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
-                                'action' : 'getJSVersion'})
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+                                'action' : 'getJSVersion',
+                                'returnViaTopic': True})
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
 
         assert not err
         # this data comes from the test suite. overloaded getVersion
@@ -855,9 +882,10 @@ class McpTest(ServerTestMixin):
     def testCommandSlaveStatus(self):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
-                                'action' : 'nodeStatus'})
+                                'action' : 'nodeStatus',
+                                'returnViaTopic': True})
 
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert not err
         assert data == {}
 
@@ -871,9 +899,10 @@ class McpTest(ServerTestMixin):
                                         'type' : '3.0.0-1-1', 'jobId' : None}}
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
-                                'action' : 'nodeStatus'})
+                                'action' : 'nodeStatus',
+                                'returnViaTopic': True})
 
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert not err
         assert data == {'master99': {'arch': 'x86_64', 'limit': 1,
             'slaves': {'master99:slave00':
@@ -886,9 +915,10 @@ class McpTest(ServerTestMixin):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
                                 'action' : 'jobStatus',
-                                'jobId' : jobId})
+                                'jobId' : jobId,
+                                'returnViaTopic': True})
 
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert not err
         assert data == [jobstatus.RUNNING, '']
 
@@ -905,7 +935,8 @@ class McpTest(ServerTestMixin):
                                 'protocolVersion' : 1,
                                 'action' : 'stopMaster',
                                 'masterId' : masterId,
-                                'delayed' : False})
+                                'delayed' : False,
+                                'returnViaTopic': True})
 
         assert self.mcp.controlTopic.outgoing == \
             ['{"node": "master64", "action": "stopSlave", '
@@ -913,7 +944,7 @@ class McpTest(ServerTestMixin):
              '{"node": "master64", "action": "slaveLimit", "limit": 0, '
              '"protocolVersion": 1}']
 
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert not err
         assert data is None
 
@@ -924,8 +955,9 @@ class McpTest(ServerTestMixin):
                                 'protocolVersion' : 1,
                                 'action' : 'stopMaster',
                                 'masterId' : masterId,
-                                'delayed' : False})
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+                                'delayed' : False,
+                                'returnViaTopic': True})
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert err
         assert data == ['UnknownHost', 'Unknown Host: %s' % masterId]
 
@@ -936,8 +968,9 @@ class McpTest(ServerTestMixin):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
                                 'action' : 'stopSlave',
-                                'slaveId' : slaveId})
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+                                'slaveId' : slaveId,
+                                'returnViaTopic': True})
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert err
         assert data == ['UnknownHost', 'Unknown Host: %s' % slaveId]
 
@@ -947,9 +980,10 @@ class McpTest(ServerTestMixin):
         self.mcp.handleCommand({'uuid' : '12345',
                                 'protocolVersion' : 1,
                                 'action' : 'stopJob',
-                                'jobId' : jobId})
+                                'jobId' : jobId,
+                                'returnViaTopic': True})
 
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert err
         self.failIf(data != ['UnknownJob', 'Unknown Job ID: %s' % jobId],
                     "Job was not reported as unknown")
@@ -961,9 +995,10 @@ class McpTest(ServerTestMixin):
                                 'protocolVersion' : 1,
                                 'action' : 'setSlaveLimit',
                                 'masterId' : masterId,
-                                'limit' : 1})
+                                'limit' : 1,
+                                'returnViaTopic': True})
 
-        err, data = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        err, data = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         assert err
         self.failIf(data != ['UnknownHost', 'Unknown Host: %s' % masterId],
                     "Host was not reported as unknown")
@@ -989,9 +1024,9 @@ class McpTest(ServerTestMixin):
         self.client.jobStatus(jobId)
         self.mcp.commandQueue.incoming = self.client.command.outgoing
         self.client.command.outgoing = []
-        self.mcp.postQueue.outgoing = []
+        self.mcp.postTopic.outgoing = []
         self.mcp.checkIncomingCommands()
-        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        error, res = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         self.failIf(error, "unexpected error checking jobStatus: %s" % res)
         status, statusMessage = res
         self.failIf(status != jobstatus.WAITING,
@@ -1008,9 +1043,9 @@ class McpTest(ServerTestMixin):
         self.client.jobStatus(jobId)
         self.mcp.commandQueue.incoming = self.client.command.outgoing
         self.client.command.outgoing = []
-        self.mcp.postQueue.outgoing = []
+        self.mcp.postTopic.outgoing = []
         self.mcp.checkIncomingCommands()
-        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        error, res = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         self.failIf(error, "unexpected error checking jobStatus: %s" % res)
         status, statusMessage = res
         self.failIf(status != jobstatus.WAITING,
@@ -1032,9 +1067,9 @@ class McpTest(ServerTestMixin):
         self.client.jobStatus(jobId1)
         self.mcp.commandQueue.incoming = self.client.command.outgoing
         self.client.command.outgoing = []
-        self.mcp.postQueue.outgoing = []
+        self.mcp.postTopic.outgoing = []
         self.mcp.checkIncomingCommands()
-        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        error, res = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         self.failIf(error, "unexpected error checking jobStatus: %s" % res)
         status, statusMessage = res
         self.failIf(status != jobstatus.WAITING,
@@ -1056,9 +1091,9 @@ class McpTest(ServerTestMixin):
         self.client.jobStatus(jobId0)
         self.mcp.commandQueue.incoming = self.client.command.outgoing
         self.client.command.outgoing = []
-        self.mcp.postQueue.outgoing = []
+        self.mcp.postTopic.outgoing = []
         self.mcp.checkIncomingCommands()
-        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        error, res = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         self.failIf(error, "unexpected error checking jobStatus: %s" % res)
         status, statusMessage = res
         self.failIf(status != jobstatus.RUNNING,
@@ -1076,9 +1111,9 @@ class McpTest(ServerTestMixin):
         self.client.jobStatus(jobId)
         self.mcp.commandQueue.incoming = self.client.command.outgoing
         self.client.command.outgoing = []
-        self.mcp.postQueue.outgoing = []
+        self.mcp.postTopic.outgoing = []
         self.mcp.checkIncomingCommands()
-        error, res = simplejson.loads(self.mcp.postQueue.outgoing.pop())
+        error, res = simplejson.loads(self.mcp.postTopic.outgoing.pop())
         self.failIf(error, "unexpected error checking jobStatus: %s" % res)
         status, statusMessage = res
         self.failIf(status != jobstatus.KILLED,

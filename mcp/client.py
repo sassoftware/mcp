@@ -27,7 +27,8 @@ class MCPClient(object):
         m.update(str(random.randint(0, 2 ** 128)))
         self.uuid = m.hexdigest()
         self.cfg = cfg
-        self.post = queue.Queue(cfg.queueHost, cfg.queuePort, self.uuid,
+        # Use a topic because we don't care about durability for responses
+        self.post = queue.Topic(cfg.queueHost, cfg.queuePort, self.uuid,
                                     namespace = None, timeOut = None)
         self.command = queue.Queue(cfg.queueHost, cfg.queuePort,
                                    'command', namespace = cfg.namespace,
@@ -40,6 +41,7 @@ class MCPClient(object):
     def _send(self, **data):
         data['uuid'] = self.uuid
         data['protocolVersion'] = 1
+        data['returnViaTopic'] = True
 
         action = sys._getframe(1).f_code.co_name
         assert action in self.__class__.__dict__

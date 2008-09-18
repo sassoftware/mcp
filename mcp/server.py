@@ -65,7 +65,10 @@ def commandResponse(func):
         elif 'uuid' not in command:
             log.error("no post address: %s" % str(command))
         else:
-            self.postQueue.send(command['uuid'], simplejson.dumps(res))
+            if command.get('returnViaTopic', False):
+                self.postTopic.send(command['uuid'], simplejson.dumps(res))
+            else:
+                self.postQueue.send(command['uuid'], simplejson.dumps(res))
     return wrapper
 
 def logErrors(func):
@@ -115,9 +118,13 @@ class MCPServer(object):
                                          namespace = cfg.namespace,
                                          timeOut = 0)
 
+        self.postTopic = queue.MultiplexedTopic(cfg.queueHost, cfg.queuePort,
+                                         autoSubscribe = False,
+                                         timeOut = 0)
+        # Deprecated
         self.postQueue = queue.MultiplexedQueue(cfg.queueHost, cfg.queuePort,
-                                                autoSubscribe = False,
-                                                timeOut = 0)
+                                         autoSubscribe = False,
+                                         timeOut = 0)
 
     def saveJobs(self):
         fn = os.path.join(self.cfg.basePath, 'jobs')
@@ -696,6 +703,7 @@ class MCPServer(object):
         self.saveJobs()
         for name in self.jobQueues:
             self.jobQueues[name].disconnect()
+        self.postTopic.disconnect()
         self.postQueue.disconnect()
 
 
