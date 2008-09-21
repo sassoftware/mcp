@@ -25,26 +25,6 @@ def logErrors(func):
     return wrapper
 
 
-class StompFrame(object):
-    def __init__(self):
-        self.headers = {}
-
-    @staticmethod
-    def parse(message):
-        ret = StompFrame()
-        try:
-            headers, body = message.lstrip().split('\n\n', 1)
-            headers = headers.splitlines()
-            ret.type = headers.pop(0)
-            for x in headers:
-                key, value = x.split(':', 1)
-                ret.headers[key.strip()] = value.strip()
-            ret.body = body
-        except:
-            return None
-        return ret
-
-
 # Class level tweakable settings:
 # timeOut: The time in seconds to wait on read before simply returning None
 #           a timeOut of zero simply polls the queue once and returns.
@@ -56,7 +36,7 @@ class StompFrame(object):
 #           if you want to send on a queue only, but never listen.
 # namespace: an extension of queue names. eg: /topic/_namespace_/topic_name
 
-class Queue(object):
+class Queue(stomp.ConnectionListener):
     type = 'queue'
     ack = 'client'
 
@@ -71,12 +51,13 @@ class Queue(object):
 
         self.inbound = []
         try:
-            self.connection = stomp.Connection(host, port)
+            self.connection = stomp.Connection([(host, port),])
         except socket.error, e_value:
             raise mcp_error.NetworkError(str(e_value))
 
-        self.connection.addlistener(self)
+        self.connection.add_listener(self)
         self.connection.start()
+        self.connection.connect()
         if namespace:
             self.connectionName = '/'.join(('', self.type, namespace, dest))
         else:
@@ -93,43 +74,39 @@ class Queue(object):
 
     def _subscribe(self):
         if self.connection is None:
-            self.connection = stomp.Connection(self.host, self.port)
-            self.connection.addlistener(self)
+            self.connection = stomp.Connection([(self.host, self.port),])
+            self.connection.add_listener(self)
             self.connection.start()
-        self.connection.subscribe(self.connectionName, ack = self.ack)
+            self.connection.connect()
+        self.connection.subscribe(destination=self.connectionName, ack = self.ack)
 
     def _unsubscribe(self):
-        self.connection.unsubscribe(self.connectionName)
+        self.connection.unsubscribe(destination=self.connectionName)
         self.connection.disconnect()
         self.connection = None
 
     @logErrors
-    def receive(self, message):
+    def on_message(self, headers, message):
         self.lock.acquire()
         try:
             if self.limitedQueue and not self.queueLimit:
                 self._unsubscribe()
             else:
-                frame = StompFrame.parse(message)
-                if frame and frame.type == 'MESSAGE':
-                    self.inbound.insert(0, frame.body)
-                    if self.ack == 'client':
-                        self.connection.ack(frame.headers['message-id'])
-                    # ack before unsubscribe, or race condition ensues
-                    if self.limitedQueue:
-                        self.queueLimit = max(self.queueLimit - 1, 0)
-                        if not self.queueLimit:
-                            self._unsubscribe()
-                elif not frame:
-                    logging.warning('Ignoring invalid stomp frame (%d bytes)' % len(message))
-                    logging.debug('Invalid frame: %s' % repr(message))
+                self.inbound.insert(0, message)
+                if self.ack == 'client':
+                    self.connection.ack(message_id=headers['message-id'])
+                # ack before unsubscribe, or race condition ensues
+                if self.limitedQueue:
+                    self.queueLimit = max(self.queueLimit - 1, 0)
+                    if not self.queueLimit:
+                        self._unsubscribe()
         finally:
             self.lock.release()
 
     def send(self, message):
         self.lock.acquire()
         try:
-            self.connection.send(self.connectionName, message)
+            self.connection.send(message, destination=self.connectionName)
         finally:
             self.lock.release()
 
@@ -189,9 +166,10 @@ class MultiplexedQueue(Queue):
         self.autoSubscribe = autoSubscribe
 
         self.inbound = []
-        self.connection = stomp.Connection(host, port)
-        self.connection.addlistener(self)
+        self.connection = stomp.Connection([(host, port),])
+        self.connection.add_listener(self)
         self.connection.start()
+        self.connection.connect()
         if namespace:
             self.connectionBase = '/'.join(('', self.type, namespace))
         else:
@@ -209,11 +187,11 @@ class MultiplexedQueue(Queue):
         finally:
             self.lock.release()
         if self.autoSubscribe:
-            self.connection.subscribe(dest, ack = self.ack)
+            self.connection.subscribe(destination=dest, ack = self.ack)
 
     def delDest(self, dest):
         dest = self.connectionBase + '/' + dest
-        self.connection.unsubscribe(dest)
+        self.connection.unsubscribe(destination=dest)
         self.lock.acquire()
         try:
             if dest in self.connectionNames:
@@ -223,13 +201,14 @@ class MultiplexedQueue(Queue):
 
     def _subscribe(self):
         if self.connection is None:
-            self.connection = stomp.Connection(self.host, self.port)
-            self.connection.addlistener(self)
+            self.connection = stomp.Connection([(self.host, self.port),])
+            self.connection.add_listener(self)
             self.connection.start()
+            self.connection.connect()
         self.lock.acquire()
         try:
             for dest in self.connectionNames:
-                self.connection.subscribe(dest, ack = self.ack)
+                self.connection.subscribe(destination=dest, ack = self.ack)
         finally:
             self.lock.release()
 
@@ -237,7 +216,7 @@ class MultiplexedQueue(Queue):
         self.lock.acquire()
         try:
             for dest in self.connectionNames:
-                self.connection.unsubscribe(dest)
+                self.connection.unsubscribe(destination=dest)
         finally:
             self.lock.release()
         self.connection.disconnect()
@@ -246,7 +225,7 @@ class MultiplexedQueue(Queue):
     def send(self, dest, message):
         self.lock.acquire()
         try:
-            self.connection.send(self.connectionBase + '/' + dest, message)
+            self.connection.send(message, destination=self.connectionBase + '/' + dest)
         finally:
             self.lock.release()
 

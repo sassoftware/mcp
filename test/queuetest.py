@@ -17,53 +17,21 @@ from mcp import queue
 import stomp
 import mcp_helper
 
-class DummyConnection(object):
+class QueueTestDummyConnection(mcp_helper.DummyConnection):
     def __init__(self, *args, **kwargs):
-        self.sent = []
-        self.listeners = []
-        self.subscriptions = []
-        self.unsubscriptions = []
-        self.acks = []
+        mcp_helper.DummyConnection.__init__(self, *args, **kwargs)
         self.messageCount = 0
 
-    def send(self, dest, message):
-        self.sent.append((dest, message))
-
-    def subscribe(self, dest, ack = 'auto'):
-        if dest.startswith('/queue/'):
-            assert ack == 'client', 'Queue will not be able to refuse a message'
-        self.subscriptions.append(dest)
-
-    def unsubscribe(self, dest):
-        self.unsubscriptions.append(dest)
-
-    def addlistener(self, listener):
-        if listener not in self.listeners:
-            self.listeners.append(listener)
-
-    def dellistener(self, listener):
-        if listener in self.listeners:
-            self.listeners.remove(listener)
-
-    def start(self):
-        pass
-
-    def ack(self, messageId):
-        self.acks.append(messageId)
-
     def insertMessage(self, message):
-        message = 'MESSAGE\nmessage-id: message-%d\n\n' % self.messageCount + message
-        self.messageCount += 1
         for listener in self.listeners:
-            listener.receive(message)
-
-    def disconnect(self):
-        pass
+            listener.on_message({'message-id':
+                    'message-%d' % self.messageCount}, message)
+        self.messageCount += 1
 
 class QueueTest(mcp_helper.MCPTest):
     def setUp(self):
         self._savedConnection = stomp.Connection
-        stomp.Connection = DummyConnection
+        stomp.Connection = QueueTestDummyConnection
         mcp_helper.MCPTest.setUp(self)
 
     def tearDown(self):
@@ -92,7 +60,7 @@ class QueueTest(mcp_helper.MCPTest):
 
     def testRecv(self):
         assert self.q.read() == None
-        self.q.receive('MESSAGE\nmessage-id: message-test\n\ntest')
+        self.q.on_message({'message-id': 'message-test'}, 'test')
         assert self.q.read() == 'test'
         assert self.q.connection.acks == ['message-test']
         assert self.q.read() == None
@@ -178,7 +146,7 @@ class QueueTest(mcp_helper.MCPTest):
 
     def testMultiplexedRecv(self):
         q = queue.MultiplexedQueue('dummyhost', 12345, namespace = 'test')
-        q.receive('MESSAGE\nmessage-id: test-message\n\ntest')
+        q.on_message({'message-id': 'test-message'}, 'test')
         assert q.inbound == ['test']
         assert q.connection.acks == ['test-message']
 
@@ -243,7 +211,7 @@ class QueueTest(mcp_helper.MCPTest):
         q._unsubscribe = MockUnsubscribe
 
         q.setLimit(0)
-        q.receive('rejected message')
+        q.on_message({}, 'rejected message')
         assert q.queueLimit == 0
         self.failIf(not self.unsubscribeCalled,
                     "queue did not re-call unsubscribe after an extra message")
@@ -257,55 +225,6 @@ class QueueTest(mcp_helper.MCPTest):
                         ['/queue/test/first', '/queue/test/second'],
                     "Expected /queue/test/fist and /queue/test/second but "
                     "got: %s" % str(q.connectionNames))
-
-    def testRecvBadMessage(self):
-        q = queue.Queue('dummyhost', 12345, dest = 'limittest',
-                        namespace = 'test')
-
-        self.warnings = []
-        self.debugs = []
-
-        def fakeWarning(message):
-            self.warnings.append(message)
-
-        def fakeDebug(message):
-            self.debugs.append(message)
-
-        warning = logging.warning
-        debug = logging.debug
-        try:
-            logging.warning = fakeWarning
-            logging.debug = fakeDebug
-            q.receive('not json')
-        finally:
-            logging.debug = debug
-            logging.warning = warning
-
-        self.assertEquals(self.warnings,
-                ['Ignoring invalid stomp frame (8 bytes)'])
-        self.assertEquals(self.debugs, ["Invalid frame: 'not json'"])
-
-    def testRecvTraceback(self):
-        def fail(*args, **kwargs):
-            raise RuntimeError('deliberate failure')
-
-        q = queue.Queue('dummyhost', 12345, dest = 'limittest',
-                        namespace = 'test')
-
-        self.errors = []
-        def FakeError(msg):
-            self.errors.append(msg)
-
-        q.lock.acquire = fail
-        error = logging.error
-        try:
-            logging.error = FakeError
-            self.assertRaises(RuntimeError, q.receive, 'bogus message')
-        finally:
-            logging.error = error
-        self.assertEquals(self.errors[:2],
-                ['CRITICAL ERROR: Stomp receive thread has crashed!',
-                    'RuntimeError: deliberate failure'])
 
 
 if __name__ == "__main__":

@@ -44,38 +44,42 @@ class DummyConnection(object):
         self.unsubscriptions = []
         self.acks = []
 
-    def send(self, dest, message):
-        self.sent.append((dest, message))
+    def send(self, message, destination=None):
+        self.sent.append((destination, message))
 
-    def receive(self, message):
+    def on_message(self, headers, message):
         for listener in self.listeners:
             listener.receive(message)
 
-    def subscribe(self, dest, ack = 'auto'):
-        if dest.startswith('/queue/'):
+    def subscribe(self, destination=None, ack='auto'):
+        if destination.startswith('/queue/'):
             assert ack == 'client', 'Queue will not be able to refuse a message'
-        self.subscriptions.insert(0, dest)
+        self.subscriptions.append(destination)
 
-    def unsubscribe(self, dest):
-        self.unsubscriptions.insert(0, dest)
+    def unsubscribe(self, destination=None):
+        self.unsubscriptions.append(destination)
 
-    def addlistener(self, listener):
+    def add_listener(self, listener):
         if listener not in self.listeners:
             self.listeners.append(listener)
 
-    def dellistener(self, listener):
+    def del_listener(self, listener):
         if listener in self.listeners:
             self.listeners.remove(listener)
 
     def start(self):
         pass
 
-    def ack(self, messageId):
-        self.acks.append(messageId)
+    def ack(self, message_id):
+        self.acks.append(message_id)
 
     def insertMessage(self, message):
-        message = 'message-id: dummy-message\n\n\n' + message
-        self.receive(message)
+        for listener in self.listeners:
+            listener.on_message({'message-id': 'dummy-message'},
+                    message)
+
+    def connect(self):
+        pass
 
     def disconnect(self):
         pass
