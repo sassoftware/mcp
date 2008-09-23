@@ -84,11 +84,15 @@ class DummyConnection(object):
     def disconnect(self):
         pass
 
+    def is_connected(self):
+        return True
+
 class DummyQueue(object):
     type = 'queue'
 
     def __init__(self, host, port, dest, namespace = 'test', timeOut = 600,
-                 queueLimit = None, autoSubscribe = True):
+                 queueLimit = None, autoSubscribe = True,
+                 maxConnectionAttempts = 0):
         self.connectionName = '/' + '/'.join((self.type, 'test', dest))
         self.incoming = []
         self.outgoing = []
@@ -109,7 +113,8 @@ class DummyQueue(object):
 
 class DummyMultiplexedQueue(DummyQueue):
     def __init__(self, host, port, dest = [], namespace = 'test',
-                 timeOut = 600, queueLimit = None, autoSubscribe = True):
+                 timeOut = 600, queueLimit = None, autoSubscribe = True,
+                 maxConnectionAttempts = 0):
         self.incoming = []
         self.outgoing = []
         self.messageCount = 0

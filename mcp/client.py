@@ -29,10 +29,12 @@ class MCPClient(object):
         self.cfg = cfg
         # Use a topic because we don't care about durability for responses
         self.post = queue.Topic(cfg.queueHost, cfg.queuePort, self.uuid,
-                                    namespace = None, timeOut = None)
+                                    namespace = None,
+                                    maxConnectionAttempts=3)
         self.command = queue.Queue(cfg.queueHost, cfg.queuePort,
                                    'command', namespace = cfg.namespace,
-                                   autoSubscribe = False)
+                                    autoSubscribe = False,
+                                    maxConnectionAttempts=3)
 
     def disconnect(self):
         self.command.disconnect()

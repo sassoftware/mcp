@@ -41,49 +41,61 @@ class Queue(stomp.ConnectionListener):
     ack = 'client'
 
     def __init__(self, host, port, dest, namespace = '', timeOut = 600,
-                 queueLimit = None, autoSubscribe = True):
+                 queueLimit = None, autoSubscribe = True,
+                 maxConnectionAttempts = 0):
         self.lock = threading.RLock()
         self.timeOut = timeOut
         self.queueLimit = queueLimit
         self.autoSubscribe = autoSubscribe
+        self.maxConnectionAttempts = maxConnectionAttempts
         self.host = host
         self.port = port
+        self.connection = None
 
         self.inbound = []
-        try:
-            self.connection = stomp.Connection([(host, port),])
-        except socket.error, e_value:
-            raise mcp_error.NetworkError(str(e_value))
 
-        self.connection.add_listener(self)
-        self.connection.start()
-        self.connection.connect()
         if namespace:
             self.connectionName = '/'.join(('', self.type, namespace, dest))
         else:
             self.connectionName = '/'.join(('', self.type, dest))
-        if self.autoSubscribe and \
-                ((not self.limitedQueue) \
-                     or (self.limitedQueue and self.queueLimit)):
-            self._subscribe()
+
+        self._connectToBroker()
 
     def __setattr__(self, attr, val):
         if attr == 'queueLimit':
             self.limitedQueue = val is not None
         object.__setattr__(self, attr, val)
 
-    def _subscribe(self):
-        if self.connection is None:
-            self.connection = stomp.Connection([(self.host, self.port),])
+    def _connectToBroker(self):
+        if self.connection and self.connection.is_connected():
+            return
+
+        try:
+            self.connection = stomp.Connection([(self.host, self.port),],
+                    prefer_localhost = False,
+                    max_connection_attempts=self.maxConnectionAttempts)
             self.connection.add_listener(self)
             self.connection.start()
             self.connection.connect()
+            self._handleSubscriptions()
+        except socket.error, e_value:
+            raise mcp_error.NetworkError(str(e_value))
+        except stomp.MaxConnectionAttemptsExceededException:
+            raise mcp_error.NetworkError("Failed to connect to the stomp broker")
+
+    def _handleSubscriptions(self):
+        if self.autoSubscribe and \
+                ((not self.limitedQueue) \
+                     or (self.limitedQueue and self.queueLimit)):
+            self._subscribe()
+
+    def _subscribe(self):
+        self._connectToBroker()
         self.connection.subscribe(destination=self.connectionName, ack = self.ack)
 
     def _unsubscribe(self):
         self.connection.unsubscribe(destination=self.connectionName)
-        self.connection.disconnect()
-        self.connection = None
+        self.disconnect()
 
     @logErrors
     def on_message(self, headers, message):
@@ -103,7 +115,11 @@ class Queue(stomp.ConnectionListener):
         finally:
             self.lock.release()
 
+    def on_disconnected(self):
+        self.connection = None
+
     def send(self, message):
+        self._connectToBroker()
         self.lock.acquire()
         try:
             self.connection.send(message, destination=self.connectionName)
@@ -154,27 +170,29 @@ class Queue(stomp.ConnectionListener):
     def disconnect(self):
         if self.connection:
             self.connection.disconnect()
+        self.connection = None
+
+    def __del__(self):
+        self.disconnect()
 
 class MultiplexedQueue(Queue):
     def __init__(self, host, port, dest = [], namespace = '',
-                 timeOut = 600, queueLimit = None, autoSubscribe = True):
-        self.host = host
-        self.port = port
-        self.lock = threading.RLock()
-        self.timeOut = timeOut
-        self.queueLimit = queueLimit
-        self.autoSubscribe = autoSubscribe
+                 timeOut = 600, queueLimit = None, autoSubscribe = True,
+                 maxConnectionAttempts = 0):
 
-        self.inbound = []
-        self.connection = stomp.Connection([(host, port),])
-        self.connection.add_listener(self)
-        self.connection.start()
-        self.connection.connect()
+        Queue.__init__(self, host, port, '', namespace,
+                timeOut, queueLimit, autoSubscribe, maxConnectionAttempts)
+        del self.connectionName
+
         if namespace:
             self.connectionBase = '/'.join(('', self.type, namespace))
         else:
             self.connectionBase = '/' + self.type
+
         self.connectionNames = []
+
+        self._connectToBroker()
+
         for d in dest:
             self.addDest(d)
 
@@ -200,11 +218,7 @@ class MultiplexedQueue(Queue):
             self.lock.release()
 
     def _subscribe(self):
-        if self.connection is None:
-            self.connection = stomp.Connection([(self.host, self.port),])
-            self.connection.add_listener(self)
-            self.connection.start()
-            self.connection.connect()
+        self._connectToBroker()
         self.lock.acquire()
         try:
             for dest in self.connectionNames:
@@ -219,10 +233,13 @@ class MultiplexedQueue(Queue):
                 self.connection.unsubscribe(destination=dest)
         finally:
             self.lock.release()
-        self.connection.disconnect()
-        self.connection = None
+        self.disconnect()
+
+    def _handleSubscriptions(self):
+        pass # not used in Multiplexed versions of this class
 
     def send(self, dest, message):
+        self._connectToBroker()
         self.lock.acquire()
         try:
             self.connection.send(message, destination=self.connectionBase + '/' + dest)

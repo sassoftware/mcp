@@ -32,7 +32,8 @@ import mcp_helper
 
 class DummyQueue(object):
     def __init__(self, host, port, dest, namespace = 'test', timeOut = 600,
-                 queueLimit = None, autoSubscribe = True):
+                 queueLimit = None, autoSubscribe = True,
+                 maxConnectionAttempts = 0):
         self.incoming = []
         self.outgoing = []
 
@@ -49,7 +50,8 @@ class DummyQueue(object):
 
 class DummyMultiplexedQueue(DummyQueue):
     def __init__(self, host, port, dest = [], namespace = 'test',
-                 timeOut = 600, queueLimit = None, autoSubscribe = True):
+                 timeOut = 600, queueLimit = None, autoSubscribe = True,
+                 maxConnectionAttempts = 0):
         self.incoming = []
         self.outgoing = []
 
