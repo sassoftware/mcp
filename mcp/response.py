@@ -28,6 +28,7 @@ class MCPResponse(object):
     def _send(self, **resp):
         resp['node'] = self.node
         resp.setdefault('protocolVersion', 1)
+        #Make sure that the caller of this function is a public method of this class
         event = sys._getframe(1).f_code.co_name
         assert event in self.__class__.__dict__
         if event.startswith('_'):
