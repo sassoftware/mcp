@@ -463,7 +463,7 @@ class MCPServer(object):
         job = self.jobs.get(jobId, {})
         return job.get('status', ('', ''))[0] == jobstatus.KILLED
 
-    def handleDeadJobs(self, slaveId):
+    def handleDeadJobs(self, slaveId, reason=None):
         jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
         job = self.jobs.get(jobId, {})
 
@@ -474,7 +474,10 @@ class MCPServer(object):
             job['status'] = (jobstatus.FAILED, "Job killed at user's request")
         elif job.get('status', ('', ''))[0] not in \
                 (jobstatus.FAILED, jobstatus.FINISHED):
-            job['status'] = (jobstatus.FAILED, "The slave handling this job has died.")
+            if reason:
+                job['status'] = (jobstatus.FAILED, "The slave handling this job has died: %s" % reason)
+            else:
+                job['status'] = (jobstatus.FAILED, "The slave handling this job has died.")
 
     def closeJobLog(self, jobId):
         if jobId in self.logFiles:
@@ -485,11 +488,11 @@ class MCPServer(object):
             del self.logFiles[jobId]
             os.system("/bin/gzip %s" % logName)
 
-    def slaveOffline(self, slaveId):
+    def slaveOffline(self, slaveId, reason = None):
         # clear the job log when a slave goes down
         jobId = self.jobSlaves.get(slaveId, {}).get('jobId')
         self.closeJobLog(jobId)
-        self.handleDeadJobs(slaveId)
+        self.handleDeadJobs(slaveId, reason)
         masterId = slaveId.split(':')[0]
         if slaveId in self.jobSlaves:
             del self.jobSlaves[slaveId]
@@ -540,7 +543,7 @@ class MCPServer(object):
             if event == 'masterOffline':
                 if node in self.jobMasters:
                     for slaveId in self.jobMasters[node]['slaves'][:]:
-                        self.slaveOffline(slaveId)
+                        self.slaveOffline(slaveId, 'Master went offline')
                     del self.jobMasters[node]
             elif event == 'masterStatus':
                 oldInfo = self.getMaster(node)
@@ -548,11 +551,11 @@ class MCPServer(object):
                 # remove slaves from the master's list that aren't present
                 for slaveId in [x for x in oldSlaves \
                                     if x not in data['slaves']]:
-                    self.slaveOffline(slaveId)
+                    self.slaveOffline(slaveId, 'Slave not present though listed in master\'s status.')
                 # remove slaves from jobslave list that aren't present
                 for slaveId in [x for x in self.jobSlaves if \
                         x.split(':')[0] == node and x not in data['slaves']]:
-                    self.slaveOffline(slaveId)
+                    self.slaveOffline(slaveId, 'Slave not present though listed in the mcp list.')
                 # ensure we record each slave. useful when we just started up
                 # and don't know of the slave yet.
                 for slaveId in data['slaves']:
@@ -577,7 +580,7 @@ class MCPServer(object):
                         # slave is associated with a jobId that needs removal
                         self.stopSlave(slaveId)
                 else:
-                    self.slaveOffline(slaveId)
+                    self.slaveOffline(slaveId, 'Slave reported an OFFLINE status')
             elif event == 'jobStatus':
                 jobId = data['jobId']
                 slave = self.getSlave(node)
