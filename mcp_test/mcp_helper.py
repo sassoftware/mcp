@@ -37,6 +37,8 @@ class SlaveBits:
     slaveListRV = (slaveDict, version)
 
 class DummyConnection(object):
+    _Connection__socket = True
+
     def __init__(self, *args, **kwargs):
         self.sent = []
         self.listeners = []

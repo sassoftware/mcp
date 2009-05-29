@@ -169,7 +169,10 @@ class Queue(stomp.ConnectionListener):
 
     def disconnect(self):
         if self.connection:
-            self.connection.disconnect()
+            # disconnect() only partially guards against the socket already
+            # being closed, so we do the thinking for it...
+            if self.connection._Connection__socket:
+                self.connection.disconnect()
         self.connection = None
 
     def __del__(self):
