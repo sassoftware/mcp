@@ -116,7 +116,11 @@ class Queue(stomp.ConnectionListener):
             self.lock.release()
 
     def on_disconnected(self):
-        self.connection = None
+        self.lock.acquire()
+        try:
+            self.connection = None
+        finally:
+            self.lock.release()
 
     def send(self, message):
         self._connectToBroker()
@@ -168,12 +172,16 @@ class Queue(stomp.ConnectionListener):
         return None
 
     def disconnect(self):
-        if self.connection:
-            # disconnect() only partially guards against the socket already
-            # being closed, so we do the thinking for it...
-            if self.connection._Connection__socket:
-                self.connection.disconnect()
-        self.connection = None
+        self.lock.acquire()
+        try:
+            if self.connection:
+                # disconnect() only partially guards against the socket already
+                # being closed, so we do the thinking for it...
+                if self.connection._Connection__socket:
+                    self.connection.disconnect()
+            self.connection = None
+        finally:
+            self.lock.release()
 
     def __del__(self):
         self.disconnect()
