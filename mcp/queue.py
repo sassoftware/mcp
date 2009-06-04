@@ -175,10 +175,17 @@ class Queue(stomp.ConnectionListener):
         self.lock.acquire()
         try:
             if self.connection:
-                # disconnect() only partially guards against the socket already
-                # being closed, so we do the thinking for it...
-                if self.connection._Connection__socket:
-                    self.connection.disconnect()
+                # stomp.py has some sort of race condition where a disconnect
+                # can fail due to the socket being cleared between this check
+                # and the disconnect call, even though we guard the
+                # on_disconnect handler. Unfortunately, this means eating
+                # errors.
+                try:
+                    if self.connection._Connection__socket:
+                        self.connection.disconnect()
+                # AttributeError: 'NoneType' object has no attribute 'shutdown'
+                except AttributeError:
+                    pass
             self.connection = None
         finally:
             self.lock.release()
