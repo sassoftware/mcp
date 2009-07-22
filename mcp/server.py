@@ -318,7 +318,7 @@ class MCPServer(object):
         version = ''
         if type == 'build':
             slave = self.getVersion(data['data']['jsversion'])
-            suffix = getSuffix(data['troveFlavor'])
+            suffix = 'x86_64'
         elif type == 'cook':
             slave = self.getVersion()
             suffix = getSuffix(data['data']['arch'])
