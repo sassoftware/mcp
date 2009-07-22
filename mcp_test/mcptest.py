@@ -86,7 +86,7 @@ class ServerTestMixin(mcp_helper.MCPTest):
         self.mcp.commandQueue.incoming = self.client.command.outgoing
         self.client.command.outgoing = []
 
-    def ackJobSlave(self, arch = 'x86'):
+    def ackJobSlave(self, arch = 'x86_64'):
         jobName = 'job:%s' % arch
         dataStr = ''
         if jobName in self.mcp.jobQueues:
@@ -128,14 +128,15 @@ class McpTest(ServerTestMixin):
         self.mcp.checkIncomingCommands()
         assert self.mcp.jobQueues, "Job wasn't marshalled to any queue"
         queueName = [x for x in self.mcp.jobQueues if x.startswith('job')][0]
-        assert queueName == 'job:x86'
+        assert queueName == 'job:x86_64'
 
     def testStartSlaveStatus(self):
         assert self.mcp.jobMasters == {}
         self.submitBuild()
         self.mcp.checkIncomingCommands()
-        self.failIf('job:x86' not in self.mcp.jobQueues,
-                "expected 'job:x86' in jobQueues, but found %s" % \
+        # x86 job -> x86_64 queue
+        self.failIf('job:x86_64' not in self.mcp.jobQueues,
+                "expected 'job:x86_64' in jobQueues, but found %s" % \
                         ', '.join(self.mcp.jobQueues.keys()))
         slaveId = self.ackJobSlave()
         self.mcp.checkResponses()
@@ -143,7 +144,7 @@ class McpTest(ServerTestMixin):
         assert 'master' in self.mcp.jobMasters
         assert 'master:slave0' in self.mcp.jobMasters['master']['slaves']
         self.assertEquals(self.mcp.jobSlaves['master:slave0'],
-            {'status': slavestatus.IDLE, 'type': '2.0.2-1-1:x86',
+            {'status': slavestatus.IDLE, 'type': '2.0.2-1-1:x86_64',
                     'jobId': None})
 
     def testSlavehandleDeadJobs(self):
