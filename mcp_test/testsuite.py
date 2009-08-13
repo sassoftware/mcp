@@ -1,4 +1,4 @@
-#!/usr/bin/python2.4
+#!/usr/bin/python
 # -*- mode: python -*-
 #
 # Copyright (c) 2004-2006 rPath, Inc.
@@ -20,33 +20,18 @@ import types
 import unittest
 import __builtin__
 
-testPath = None
-
-conaryDir = None
 _setupPath = None
 def setup():
     global _setupPath
     if _setupPath:
         return _setupPath
-    global testPath
 
-    if not os.environ.has_key('CONARY_PATH'):
-        print "please set CONARY_PATH"
-        sys.exit(1)
-
-    conaryPath      = os.getenv('CONARY_PATH')
-    mcpPath         = os.getenv('MCP_PATH',         '..')
-    mcpTestPath     = os.getenv('MCP_TEST_PATH',    '.')
-
-    sys.path = [os.path.realpath(x) for x in (mcpPath, mcpTestPath, conaryPath)] + sys.path
-    os.environ.update(dict(CONARY_PATH=conaryPath,
-        MCP_PATH=mcpPath, MCP_TEST_PATH=mcpTestPath, PYTHONPATH=(':'.join(sys.path))))
-
-    from testrunner import testhelp
-    testPath = testhelp.getTestPath()
-
-    global conaryDir
-    conaryDir = conaryPath
+    from testrunner import pathManager
+    mcpPath = pathManager.addExecPath('MCP_PATH')
+    mcpTestPath = pathManager.addExecPath('MCP_TEST_PATH')
+    pathManager.addResourcePath('TEST_PATH',path=mcpTestPath)
+    conaryPath = pathManager.addExecPath('CONARY_PATH')
+    stompPath = pathManager.addExecPath('STOMP_PATH')
 
     from conary.lib import util
     sys.excepthook = util.genExcepthook(True)
@@ -67,8 +52,8 @@ def setup():
     stomp.Connection = mcp_helper.DummyConnection
     # end MCP specific tweaks
 
-    _setupPath = testPath
-    return testPath
+    _setupPath = pathManager.getPath('MCP_TEST_PATH')
+    return _setupPath
 
 _individual = False
 
@@ -80,13 +65,13 @@ def isIndividual():
 EXCLUDED_PATHS = ['test', 'setup.py']
 
 def main(argv=None, individual=True):
-    from testrunner import testhelp
+    from testrunner import testhelp,pathManager
     testhelp.isIndividual = isIndividual
     class rBuilderTestSuiteHandler(testhelp.TestSuiteHandler):
         suiteClass = testhelp.ConaryTestSuite
 
         def getCoverageDirs(self, environ):
-            return os.getenv('MCP_PATH')
+            return pathManager.getPath('MCP_PATH')
 
         def getCoverageExclusions(self, environ):
             return EXCLUDED_PATHS
@@ -94,18 +79,14 @@ def main(argv=None, individual=True):
     global _handler
     global _individual
     _individual = individual
+
+    handler = rBuilderTestSuiteHandler(individual=individual, topdir=pathManager.getPath('MCP_TEST_PATH'),
+                                       testPath=pathManager.getPath('MCP_TEST_PATH'),
+                                       conaryDir=pathManager.getPath('CONARY_PATH'))
+    _handler = handler
+
     if argv is None:
         argv = list(sys.argv)
-    topdir = testhelp.getTestPath()
-    cwd = os.getcwd()
-    if topdir not in sys.path:
-        sys.path.insert(0, topdir)
-    if cwd != topdir and cwd not in sys.path:
-        sys.path.insert(0, cwd)
-
-    handler = rBuilderTestSuiteHandler(individual=individual, topdir=topdir,
-                                       testPath=testPath, conaryDir=conaryDir)
-    _handler = handler
     results = handler.main(argv)
     return (not results.wasSuccessful())
 
