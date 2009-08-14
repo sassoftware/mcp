@@ -4,31 +4,16 @@
 # Copyright (c) 2004-2009 rPath, Inc.
 #
 
-import bdb
-import cPickle
-import grp
 import sys
-import os
-import os.path
-import pwd
-import socket
-import re
-import tempfile
-import time
-import types
 import unittest
-import __builtin__
 
-_setupPath = None
+EXCLUDED_PATHS = ['test', 'setup.py']
+
+
 def setup():
-    global _setupPath
-    if _setupPath:
-        return _setupPath
-
     from testrunner import pathManager
     mcpPath = pathManager.addExecPath('MCP_PATH')
-    mcpTestPath = pathManager.addExecPath('MCP_TEST_PATH')
-    pathManager.addResourcePath('TEST_PATH',path=mcpTestPath)
+    pathManager.addResourcePath('TEST_PATH',path=mcpPath)
     conaryPath = pathManager.addExecPath('CONARY_PATH')
     stompPath = pathManager.addExecPath('STOMP_PATH')
 
@@ -46,26 +31,14 @@ def setup():
     sys.modules[__name__].SkipTestException = SkipTestException
 
     # MCP specific tweaks
-    import mcp_helper
+    from mcp_test import mcp_helper
     import stomp
     stomp.Connection = mcp_helper.DummyConnection
     # end MCP specific tweaks
 
-    _setupPath = pathManager.getPath('MCP_TEST_PATH')
-    return _setupPath
-
-_individual = False
-
-def isIndividual():
-    global _individual
-    return _individual
-
-
-EXCLUDED_PATHS = ['test', 'setup.py']
 
 def main(argv=None, individual=True):
     from testrunner import testhelp,pathManager
-    testhelp.isIndividual = isIndividual
     class rBuilderTestSuiteHandler(testhelp.TestSuiteHandler):
         suiteClass = testhelp.ConaryTestSuite
 
@@ -75,19 +48,14 @@ def main(argv=None, individual=True):
         def getCoverageExclusions(self, environ):
             return EXCLUDED_PATHS
 
-    global _handler
-    global _individual
-    _individual = individual
-
-    handler = rBuilderTestSuiteHandler(individual=individual, topdir=pathManager.getPath('MCP_TEST_PATH'),
-                                       testPath=pathManager.getPath('MCP_TEST_PATH'),
-                                       conaryDir=pathManager.getPath('CONARY_PATH'))
-    _handler = handler
+    root = pathManager.getPath('MCP_PATH')
+    handler = rBuilderTestSuiteHandler(individual=individual)
 
     if argv is None:
         argv = list(sys.argv)
     results = handler.main(argv)
     return (not results.wasSuccessful())
+
 
 if __name__ == '__main__':
     setup()
