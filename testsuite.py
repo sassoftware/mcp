@@ -54,7 +54,7 @@ def main(argv=None, individual=True):
     if argv is None:
         argv = list(sys.argv)
     results = handler.main(argv)
-    return (not results.wasSuccessful())
+    return results.getExitCode()
 
 
 if __name__ == '__main__':
