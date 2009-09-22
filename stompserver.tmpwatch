@@ -1,2 +1,0 @@
-#!/bin/sh
-tmpwatch -d 72 /var/lib/stompserver
