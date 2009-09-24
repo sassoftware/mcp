@@ -1,0 +1,40 @@
+#
+# Copyright (c) 2009 rPath, Inc.
+#
+# All rights reserved.
+#
+
+"""
+Tools for performing RPC against nodes on the message bus.
+"""
+
+#from rmake.lib.apiutils import register, freeze, thaw
+from rmake.messagebus import rpclib
+from rmake.multinode import nodetypes
+from rmake.multinode.server import messagebus
+from mcp import dispatcher
+from mcp.messagebus import nodetypes as mcp_nodetypes
+
+
+def findBusNode(busClient, sessionClass):
+    """
+    Return the sessionId of a node on the message bus with the given
+    C{sessionClass}, or C{None} if no node with that class is connected.
+    """
+    busProxy = messagebus.MessageBusRPCClient(busClient)
+    for nodeId, nodeClass in sorted(busProxy.listSessions().items()):
+        if nodeClass == sessionClass:
+            return nodeId
+    return None
+
+
+class DispatcherRPCClient(rpclib.SessionProxy):
+    def __init__(self, busClient, dispatcherId=None):
+        if dispatcherId is None:
+            dispatcherId = findBusNode(busClient,
+                    dispatcher.Dispatcher.sessionClass)
+            if dispatcherId is None:
+                raise RuntimeError("Dispatcher does not appear to be running.")
+
+        rpclib.SessionProxy.__init__(self, dispatcher.Dispatcher, busClient,
+                dispatcherId)
