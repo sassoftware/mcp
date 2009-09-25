@@ -4,6 +4,7 @@
 # All rights reserved.
 #
 
+import collections
 import os
 import time
 import weakref
@@ -45,21 +46,21 @@ class Dispatcher(bus_node.BusNode):
     def handleRegisterNodeMessage(self, msg):
         if not isinstance(msg.payload.node, nodetypes.MasterNodeType):
             return
-        self.scheduler.set_node_info(msg.headers.sessionId, msg.payload.node)
+        self.scheduler.update_node(msg.headers.sessionId, msg.payload.node)
 
     def handleNodeStatus(self, msg):
         if msg.headers.status == 'DISCONNECTED':
             self.scheduler.remove_node(msg.headers.statusId)
 
     def handleMasterStatusMessage(self, msg):
-        self.scheduler.set_node_info(msg.headers.sessionId, msg.payload.node)
+        self.scheduler.update_node(msg.headers.sessionId, msg.payload.node)
 
     # API server machinery and entry points
     @api(version=1)
     @api_parameters(1, 'ImageJob')
     @api_return(1, None)
     def add_job(self, callData, imageJob):
-        self.scheduler.add_job(imageJob)
+        return self.scheduler.add_job(imageJob)
 
 
 class Scheduler(object):
@@ -69,15 +70,15 @@ class Scheduler(object):
     def __init__(self, dispatcher):
         self.dispatcher = weakref.ref(dispatcher)
         self.nodes = {}
-        self.queued_jobs = []
+        self.queued_jobs = collections.deque()
         self._logger = dispatcher._logger
 
-    def set_node_info(self, session_id, node_info):
-        if session_id in self.nodes:
-            self.nodes[session_id].set_info(node_info)
-        else:
+    # Nodes
+    def update_node(self, session_id, node):
+        if session_id not in self.nodes:
+            self.nodes[session_id] = SchedulerNode(session_id)
             self._logger.info("Added node %s to pool.", session_id)
-            self.nodes[session_id] = SchedulerNode(node_info)
+        self.nodes[session_id].update(node.slots, node.machineInfo)
         self.assign_jobs()
 
     def remove_node(self, session_id):
@@ -89,8 +90,10 @@ class Scheduler(object):
         node = self.nodes[session_id]
 
         # Any jobs still assigned to the node fail.
-        for job in node.assigned_jobs:
-            self.fail_job(job.uuid)
+        for job_uuid in node.jobs:
+            self._logger.info("Job %s failed due to node %s shutdown.",
+                    job_uuid, session_id)
+            # TODO: notify
 
         del self.nodes[session_id]
         self._logger.info("Removed node %s from pool.", session_id)
@@ -105,49 +108,72 @@ class Scheduler(object):
                         "removing from pool.", session_id)
                 self.remove_node(session_id)
 
+    def get_slot(self):
+        """
+        Find the node with the best slot for a new job.
+        """
+        open_nodes = [x for x in self.nodes.values() if x.has_slots()]
+        if not open_nodes:
+            return None
+        return sorted(open_nodes, key=lambda x: x.get_score())[0]
+
+    # Jobs
     def assign_jobs(self):
         """
         Attempt to assign queued jobs to a node.
         """
+        while self.queued_jobs:
+            job = self.queued_jobs[0]
+            node = self.get_slot()
+            if not node:
+                break
+            self.send_job(node, job)
+            self.queued_jobs.popleft()
 
-    def add_job(self, image_job):
+    def add_job(self, job):
         """
-        Add a new job to the queue.
+        Add a new job to the queue and try to assign it to a node.
         """
-        job = SchedulerJob(image_job)
+        job.assign_uuid()
         self.queued_jobs.append(job)
+        self._logger.info("Added new job %s.", job.uuid)
         self.assign_jobs()
         return job.uuid
 
-    def fail_job(self, job_uuid):
-        pass
-
-
-class SchedulerJob(object):
-    """
-    Container for information the dispatcher has about a job.
-    """
-    def __init__(self, image_job):
-        self.image_job = image_job
-        self.uuid = os.urandom(16).encode('hex')
+    def send_job(self, node, job):
+        """
+        Assign a job to a node and notify the node.
+        """
+        msg = messages.JobCommand()
+        msg.set(job)
+        self.dispatcher().bus.sendMessage('/image_command', msg,
+                node.session_id)
+        self._logger.info("Sent job %s to node %s.", job.uuid, node.session_id)
+        node.jobs.add(job.uuid)
 
 
 class SchedulerNode(object):
-    """
-    Container for information the dispatcher has about a node.
-    """
-    def __init__(self, node_info):
+    def __init__(self, session_id):
+        self.session_id = session_id
+        self.jobs = set()
+        self.slots = None
+        self.machine_info = None
+        self.last_seen = None
+
+    def update(self, slots, machine_info):
+        self.slots = slots
+        self.machine_info = machine_info
         self.last_seen = time.time()
-        self.node_info = node_info
-        self.assigned_jobs = []
 
     def is_alive(self):
-        # 16 seconds is 3 heartbeat intervals + 1
+        # 16 seconds = 3 heartbeats + 1
         return time.time() - self.last_seen < 16
 
-    def set_info(self, node_info):
-        self.last_seen = time.time()
-        self.node_info = node_info
+    def has_slots(self):
+        return len(self.jobs) < self.slots
+
+    def get_score(self):
+        return len(self.jobs) / float(self.slots)
 
 
 if __name__ == '__main__':

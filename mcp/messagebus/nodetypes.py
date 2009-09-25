@@ -8,6 +8,7 @@
 Declarations of all bus node types used by the MCP.
 """
 
+import time
 from rmake.lib.apiutils import freeze, thaw
 from rmake.multinode import nodetypes
 
@@ -19,9 +20,8 @@ class DispatcherNodeType(nodetypes.NodeType):
 class MasterNodeType(nodetypes.NodeType):
     nodeType = 'image_master'
 
-    def __init__(self, slots, jobs, machineInfo):
+    def __init__(self, slots, machineInfo):
         self.slots = slots
-        self.jobs = jobs
         self.machineInfo = machineInfo
 
     def freeze(self):
