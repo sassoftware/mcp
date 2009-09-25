@@ -44,16 +44,19 @@ class Dispatcher(bus_node.BusNode):
         self.scheduler.cull_nodes()
 
     def handleRegisterNodeMessage(self, msg):
-        if not isinstance(msg.payload.node, nodetypes.MasterNodeType):
+        if not isinstance(msg.getNode(), nodetypes.MasterNodeType):
             return
-        self.scheduler.update_node(msg.headers.sessionId, msg.payload.node)
+        self.scheduler.update_node(msg.getSessionId(), msg.getNode())
 
     def handleNodeStatus(self, msg):
-        if msg.headers.status == 'DISCONNECTED':
-            self.scheduler.remove_node(msg.headers.statusId)
+        if msg.getStatus() == 'DISCONNECTED':
+            self.scheduler.remove_node(msg.getStatusId())
 
     def handleMasterStatusMessage(self, msg):
-        self.scheduler.update_node(msg.headers.sessionId, msg.payload.node)
+        self.scheduler.update_node(msg.getSessionId(), msg.getNode())
+
+    def handleJobCompleteMessage(self, msg):
+        self.scheduler.remove_job(msg.getSessionId(), msg.getUUID())
 
     # API server machinery and entry points
     @api(version=1)
@@ -149,7 +152,17 @@ class Scheduler(object):
         self.dispatcher().bus.sendMessage('/image_command', msg,
                 node.session_id)
         self._logger.info("Sent job %s to node %s.", job.uuid, node.session_id)
-        node.jobs.add(job.uuid)
+        node.add_job(job.uuid)
+
+    def remove_job(self, session_id, job_uuid):
+        """
+        Remove a job from the specified node.
+        """
+        if session_id not in self.nodes:
+            return
+        self._logger.info("Removing job %s from node %s.", job_uuid,
+                session_id)
+        self.nodes[session_id].remove_job(job_uuid)
 
 
 class SchedulerNode(object):
@@ -164,6 +177,12 @@ class SchedulerNode(object):
         self.slots = slots
         self.machine_info = machine_info
         self.last_seen = time.time()
+
+    def add_job(self, uuid):
+        self.jobs.add(uuid)
+
+    def remove_job(self, uuid):
+        self.jobs.discard(uuid)
 
     def is_alive(self):
         # 16 seconds = 3 heartbeats + 1

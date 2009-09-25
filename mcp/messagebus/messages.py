@@ -46,8 +46,21 @@ class MasterStatusMessage(ImageEventMessage):
     def set(self, node):
         self.payload.node = node
 
+    def getNode(self):
+        return self.payload.node
+
     def payloadToDict(self):
         return dict(node=self.payload.node.freeze())
 
     def loadPayloadFromDict(self, d):
         self.payload.node = nodetypes.MasterNodeType.thaw(d['node'][1])
+
+
+class JobCompleteMessage(ImageEventMessage):
+    messageType = 'image_job_complete'
+
+    def set(self, uuid):
+        self.headers.uuid = uuid
+
+    def getUUID(self):
+        return self.headers.uuid
