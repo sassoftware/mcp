@@ -3,3 +3,5 @@
 
 ^test/\.times$
 ^test/\.coverage
+^build/
+^[^/]+\.egg-info/
