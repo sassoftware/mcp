@@ -13,7 +13,7 @@ from conary.lib import cfgtypes
 class CfgLogLevel(cfgtypes.CfgEnum):
     validValues = ['ERROR', 'WARNING', 'INFO', 'DEBUG']
     def checkEntry(self, val):
-        CfgEnum.checkEntry(self, val.upper())
+        cfgtypes.CfgEnum.checkEntry(self, val.upper())
 
 
 class MCPConfig(conarycfg.ConfigFile):
