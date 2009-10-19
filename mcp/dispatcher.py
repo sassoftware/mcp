@@ -171,12 +171,15 @@ class SchedulerNode(object):
         self.jobs = set()
         self.slots = None
         self.machine_info = None
+        self.first_seen = None
         self.last_seen = None
 
     def update(self, slots, machine_info):
         self.slots = slots
         self.machine_info = machine_info
         self.last_seen = time.time()
+        if not self.first_seen:
+            self.first_seen = self.last_seen
 
     def add_job(self, uuid):
         self.jobs.add(uuid)
