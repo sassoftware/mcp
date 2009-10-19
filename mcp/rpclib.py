@@ -13,6 +13,7 @@ from rmake.messagebus import rpclib
 from rmake.multinode import nodetypes
 from rmake.multinode.server import messagebus
 from mcp import dispatcher
+from mcp.mcp_error import BuildSystemUnreachableError
 from mcp.messagebus import nodetypes as mcp_nodetypes
 
 
@@ -34,7 +35,8 @@ class DispatcherRPCClient(rpclib.SessionProxy):
             dispatcherId = findBusNode(busClient,
                     dispatcher.Dispatcher.sessionClass)
             if dispatcherId is None:
-                raise RuntimeError("Dispatcher does not appear to be running.")
+                raise BuildSystemUnreachableError(
+                        "Could not contact the dispatcher")
 
         rpclib.SessionProxy.__init__(self, dispatcher.Dispatcher, busClient,
                 dispatcherId)

@@ -65,6 +65,12 @@ class Dispatcher(bus_node.BusNode):
     def add_job(self, callData, imageJob):
         return self.scheduler.add_job(imageJob)
 
+    @api(version=1)
+    @api_parameters(1, None)
+    @api_return(1, None)
+    def stop_job(self, callData, uuid):
+        raise NotImplementedError
+
 
 class Scheduler(object):
     """
@@ -139,7 +145,8 @@ class Scheduler(object):
         """
         job.assign_uuid()
         self.queued_jobs.append(job)
-        self._logger.info("Added new job %s.", job.uuid)
+        self._logger.info("Added new job %s from %s", job.uuid,
+                job.rbuilder_url)
         self.assign_jobs()
         return job.uuid
 
@@ -160,9 +167,9 @@ class Scheduler(object):
         """
         if session_id not in self.nodes:
             return
-        self._logger.info("Removing job %s from node %s.", job_uuid,
-                session_id)
+        self._logger.info("Removing job %s", job_uuid)
         self.nodes[session_id].remove_job(job_uuid)
+        self.assign_jobs()
 
 
 class SchedulerNode(object):
