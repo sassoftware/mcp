@@ -17,6 +17,10 @@ class MessageBusLogger(logging.Logger):
     def close(self):
         pass
 
+    # API server interface
+    def logRPCCall(self, callData, methodName, args):
+        pass
+
     # Message bus logger interface
     def logMessage(self, message, fromSession=None):
         pass
