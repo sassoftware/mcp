@@ -65,6 +65,12 @@ class Dispatcher(bus_node.BusNode):
 
     # API server machinery and entry points
     @api(version=1)
+    @api_parameters(1)
+    @api_return(1, None)
+    def list_jobs(self, callData):
+        return self.scheduler.list_jobs()
+
+    @api(version=1)
     @api_parameters(1, 'ImageJob')
     @api_return(1, None)
     def add_job(self, callData, imageJob):
@@ -132,6 +138,16 @@ class Scheduler(object):
         return sorted(open_nodes, key=lambda x: x.get_score())[0]
 
     # Jobs
+    def list_jobs(self):
+        """
+        Return a list of all job UUIDs known to this dispatcher, running and
+        queued.
+        """
+        jobs = set(self.queued_jobs)
+        for node in self.nodes.values():
+            jobs.update(node.jobs)
+        return sorted(jobs)
+
     def assign_jobs(self):
         """
         Attempt to assign queued jobs to a node.

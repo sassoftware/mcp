@@ -22,6 +22,9 @@ class Client(object):
         self.bus.logger.setQuietMode()
         self.dispatcher = rpclib.DispatcherRPCClient(self.bus)
 
+    def list_jobs(self):
+        return self.dispatcher.list_jobs()
+
     def new_job(self, rbuilder_url, job_data):
         if rbuilder_url == self.LOCAL_RBUILDER:
             if not self._local_address:

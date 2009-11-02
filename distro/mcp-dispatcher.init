@@ -21,6 +21,8 @@ DISPATCHER_OPTS=
 
 [ -f /etc/sysconfig/$prog ] && source /etc/sysconfig/$prog
 
+export PYTHONPATH
+
 
 start() {
     echo -n "Starting $LONGNAME:"
