@@ -8,6 +8,7 @@ import time
 import weakref
 from rmake.lib import apirpc
 from rmake.messagebus import busclient
+from mcp.messagebus import logger as buslogger
 from mcp.messagebus import messages
 
 
@@ -18,6 +19,9 @@ class BusNode(apirpc.ApiServer):
     timerPeriod = 5
 
     def __init__(self, (busHost, busPort), nodeInfo=None, logger=None):
+        if not logger:
+            logger = buslogger.MessageBusLogger.new(
+                    'messagebus.' + self.sessionClass)
         apirpc.ApiServer.__init__(self, logger=logger)
 
         self.subscriptions = list(self.subscriptions)
@@ -31,6 +35,7 @@ class BusNode(apirpc.ApiServer):
         self.bus = busclient.MessageBusClient(busHost, busPort,
                 dispatcher=self, sessionClass=self.sessionClass,
                 subscriptions=self.subscriptions)
+        self.bus.logger = self.bus.session.logger = logger
 
         self.lastTimer = time.time()
         self.onStart()

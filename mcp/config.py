@@ -9,6 +9,8 @@ import os
 from conary import conarycfg
 from conary.lib import cfgtypes
 
+CONFIG_PATH = '/srv/rbuilder/mcp/config'
+
 
 class CfgLogLevel(cfgtypes.CfgEnum):
     validValues = ['ERROR', 'WARNING', 'INFO', 'DEBUG']
@@ -18,7 +20,7 @@ class CfgLogLevel(cfgtypes.CfgEnum):
 
 class MCPConfig(conarycfg.ConfigFile):
     basePath = '/srv/rbuilder/mcp'
-    logPath = '/var/log/rbuilder'
+    logPath = '/var/log/rbuilder/mcp.log'
     logLevel = (CfgLogLevel, 'INFO')
 
     queueHost = '127.0.0.1'

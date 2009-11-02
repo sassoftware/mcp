@@ -5,16 +5,21 @@
 #
 
 import collections
+import logging
+import optparse
 import os
 import time
 import weakref
-from rmake.lib import apirpc
-from rmake.lib import server
-from rmake.lib.apiutils import api, api_parameters, api_return, freeze, thaw, register
-from mcp import image_job
+from mcp import config
+from mcp import image_job # import so it gets registered
 from mcp.messagebus import bus_node
 from mcp.messagebus import messages
 from mcp.messagebus import nodetypes
+from mcp.util import setupLogging
+from os import _exit
+from rmake.lib.apiutils import api, api_parameters, api_return
+
+log = logging.getLogger(__name__)
 
 
 class Dispatcher(bus_node.BusNode):
@@ -29,8 +34,8 @@ class Dispatcher(bus_node.BusNode):
             '/image_event',
             ]
 
-    def __init__(self):
-        bus_node.BusNode.__init__(self, ('localhost', 50900))
+    def __init__(self, host='localhost', port=50900):
+        bus_node.BusNode.__init__(self, (host, port))
         self.scheduler = Scheduler(self)
 
     # Node client machinery and entry points
@@ -69,6 +74,7 @@ class Dispatcher(bus_node.BusNode):
     @api_parameters(1, None)
     @api_return(1, None)
     def stop_job(self, callData, uuid):
+        # TODO
         raise NotImplementedError
 
 
@@ -80,13 +86,12 @@ class Scheduler(object):
         self.dispatcher = weakref.ref(dispatcher)
         self.nodes = {}
         self.queued_jobs = collections.deque()
-        self._logger = dispatcher._logger
 
     # Nodes
     def update_node(self, session_id, node):
         if session_id not in self.nodes:
             self.nodes[session_id] = SchedulerNode(session_id)
-            self._logger.info("Added node %s to pool.", session_id)
+            log.info("Added node %s to pool.", session_id)
         self.nodes[session_id].update(node.slots, node.machineInfo)
         self.assign_jobs()
 
@@ -100,12 +105,12 @@ class Scheduler(object):
 
         # Any jobs still assigned to the node fail.
         for job_uuid in node.jobs:
-            self._logger.info("Job %s failed due to node %s shutdown.",
+            log.info("Job %s failed due to node %s shutdown.",
                     job_uuid, session_id)
             # TODO: notify
 
         del self.nodes[session_id]
-        self._logger.info("Removed node %s from pool.", session_id)
+        log.info("Removed node %s from pool.", session_id)
 
     def cull_nodes(self):
         """
@@ -113,7 +118,7 @@ class Scheduler(object):
         """
         for session_id, node in self.nodes.items():
             if not node.is_alive():
-                self._logger.info("No heartbeat from node %s; "
+                log.info("No heartbeat from node %s; "
                         "removing from pool.", session_id)
                 self.remove_node(session_id)
 
@@ -145,7 +150,7 @@ class Scheduler(object):
         """
         job.assign_uuid()
         self.queued_jobs.append(job)
-        self._logger.info("Added new job %s from %s", job.uuid,
+        log.info("Added new job %s from %s", job.uuid,
                 job.rbuilder_url)
         self.assign_jobs()
         return job.uuid
@@ -158,7 +163,7 @@ class Scheduler(object):
         msg.set(job)
         self.dispatcher().bus.sendMessage('/image_command', msg,
                 node.session_id)
-        self._logger.info("Sent job %s to node %s.", job.uuid, node.session_id)
+        log.info("Sent job %s to node %s.", job.uuid, node.session_id)
         node.add_job(job.uuid)
 
     def remove_job(self, session_id, job_uuid):
@@ -167,7 +172,7 @@ class Scheduler(object):
         """
         if session_id not in self.nodes:
             return
-        self._logger.info("Removing job %s", job_uuid)
+        log.info("Removing job %s", job_uuid)
         self.nodes[session_id].remove_job(job_uuid)
         self.assign_jobs()
 
@@ -205,5 +210,50 @@ class SchedulerNode(object):
         return len(self.jobs) / float(self.slots)
 
 
-if __name__ == '__main__':
-    Dispatcher().serve_forever()
+def main(args):
+    parser = optparse.OptionParser()
+    parser.add_option('-c', '--config-file', default=config.CONFIG_PATH)
+    parser.add_option('-n', '--no-daemon', action='store_true')
+    parser.add_option('-p', '--pid-file', default='/var/run/mcp-dispatcher.pid')
+    options, args = parser.parse_args(args)
+
+    cfg = config.MCPConfig()
+    if (options.config_file != config.CONFIG_PATH
+            or os.path.exists(config.CONFIG_PATH)):
+        cfg.read(options.config_file)
+
+    setupLogging(cfg.logLevel, toFile=cfg.logPath, toStderr=options.no_daemon)
+
+    dispatcher = Dispatcher(cfg.queueHost, cfg.queuePort)
+
+    if options.no_daemon:
+        dispatcher.serve_forever()
+    else:
+        # Double-fork to daemonize
+        pid = os.fork()
+        if pid:
+            return
+
+        pid = os.fork()
+        if pid:
+            _exit(0)
+
+        try:
+            os.setsid()
+            devNull = os.open(os.devnull, os.O_RDWR)
+            os.dup2(devNull, 0)
+            os.dup2(devNull, 1)
+            os.dup2(devNull, 2)
+            os.close(devNull)
+
+            pid = open(options.pid_file, 'w')
+            pid.write(str(os.getpid()))
+            pid.close()
+
+            dispatcher.serve_forever()
+
+        finally:
+            try:
+                os.unlink(options.pid_file)
+            finally:
+                _exit(0)
