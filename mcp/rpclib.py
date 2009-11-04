@@ -7,8 +7,9 @@
 """
 Tools for performing RPC against nodes on the message bus.
 """
-
+from conary.lib.util import rethrow
 #from rmake.lib.apiutils import register, freeze, thaw
+from rmake.errors import OpenError
 from rmake.messagebus import rpclib
 from rmake.multinode import nodetypes
 from rmake.multinode.server import messagebus
@@ -32,8 +33,12 @@ def findBusNode(busClient, sessionClass):
 class DispatcherRPCClient(rpclib.SessionProxy):
     def __init__(self, busClient, dispatcherId=None):
         if dispatcherId is None:
-            dispatcherId = findBusNode(busClient,
-                    dispatcher.Dispatcher.sessionClass)
+            try:
+                dispatcherId = findBusNode(busClient,
+                        dispatcher.Dispatcher.sessionClass)
+            except OpenError, err:
+                rethrow(BuildSystemUnreachableError)
+
             if dispatcherId is None:
                 raise BuildSystemUnreachableError(
                         "Could not contact the dispatcher")
