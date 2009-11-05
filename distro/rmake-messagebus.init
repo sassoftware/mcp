@@ -1,0 +1,61 @@
+#!/bin/bash
+# chkconfig: 345 50 20
+# description: Relays messages between rMake components
+# processname: rmake-messagebus
+
+#
+# Copyright (c) 2007, 2009 rPath, Inc.
+#
+# All rights reserved
+#
+
+# Source function library
+. /etc/init.d/functions
+
+prog=rmake-messagebus
+LONGNAME="rMake Message Bus"
+PIDFILE="/var/run/$prog.pid"
+DAEMON="/usr/sbin/$prog"
+DAEMON_OPTS="-l /var/log/rmake/messagebus.log"
+
+[ -f /etc/sysconfig/$prog ] && source /etc/sysconfig/$prog
+
+export PYTHONPATH
+
+
+start() {
+    echo -n "Starting $LONGNAME:"
+
+    pid=$(pidofproc $(basename $DAEMON))
+    if checkpid $pid; then
+        failure
+    else
+        daemon $DAEMON -P "$PIDFILE" $DAEMON_OPTS
+    fi
+    echo ""
+}
+
+stop() {
+    echo -n "Stopping $LONGNAME:"
+    killproc $DAEMON
+    echo
+}
+
+case "$1" in
+  start)
+        start
+        ;;
+  stop)
+        stop
+        ;;
+  restart)
+        stop
+        start
+        ;;
+  status)
+        status $DAEMON
+        ;;
+  *)
+    echo "Usage: `basename $0` {start|stop|restart|status}"
+    ;;
+esac

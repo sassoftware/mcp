@@ -1,4 +1,5 @@
-/var/log/rbuilder/jobmaster.log {
+/var/log/rbuilder/jobmaster.log
+/var/log/rmake/messagebus.log {
     missingok
     notifempty
     compress
