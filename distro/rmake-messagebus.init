@@ -1,10 +1,10 @@
 #!/bin/bash
-# chkconfig: 345 50 20
+# chkconfig: 345 20 50
 # description: Relays messages between rMake components
 # processname: rmake-messagebus
 
 #
-# Copyright (c) 2007, 2009 rPath, Inc.
+# Copyright (c) 2009 rPath, Inc.
 #
 # All rights reserved
 #
