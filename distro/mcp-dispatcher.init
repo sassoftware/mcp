@@ -1,5 +1,5 @@
 #!/bin/bash
-# chkconfig: 345 21 49
+# chkconfig: 345 21 51
 # description: Dispatches image jobs to worker nodes.
 # processname: mcp-dispatcher
 
