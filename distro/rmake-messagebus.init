@@ -30,15 +30,29 @@ start() {
     if checkpid $pid; then
         failure
     else
-        daemon $DAEMON -P "$PIDFILE" $DAEMON_OPTS
+        daemon $DAEMON -P "$PIDFILE" $DAEMON_OPTS \
+            && touch /var/lock/subsys/$prog
     fi
     echo ""
 }
 
 stop() {
     echo -n "Stopping $LONGNAME:"
-    killproc $DAEMON
+    killproc $DAEMON && rm -f /var/lock/subsys/$prog
     echo
+}
+
+restart(){
+    stop
+    start
+}
+
+condrestart(){
+    [ -e /var/lock/subsys/$prog ] && restart
+}
+
+condstop(){
+    [ -e /var/lock/subsys/$prog ] && stop
 }
 
 case "$1" in
@@ -49,13 +63,18 @@ case "$1" in
         stop
         ;;
   restart)
-        stop
-        start
+        restart
+        ;;
+  condrestart)
+        condrestart
+        ;;
+  condstop)
+        condstop
         ;;
   status)
         status $DAEMON
         ;;
   *)
-    echo "Usage: `basename $0` {start|stop|restart|status}"
+    echo "Usage: `basename $0` {start|stop|restart|condstop|condrestart|status}"
     ;;
 esac
