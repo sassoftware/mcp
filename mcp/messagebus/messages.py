@@ -35,6 +35,16 @@ class JobCommand(ImageCommandMessage):
         self.set(thaw('ImageJob', d['job']))
 
 
+class StopCommand(ImageCommandMessage):
+    messageType = 'image_command_stop'
+
+    def set(self, uuid):
+        self.headers.uuid = uuid
+
+    def getUUID(self):
+        return self.headers.uuid
+
+
 # Events
 class ImageEventMessage(Message):
     pass

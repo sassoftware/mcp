@@ -16,6 +16,15 @@ class ImageJob(object):
 
         self.node_id = None
 
+    def __hash__(self):
+        return hash(self.uuid)
+
+    def __eq__(self, other):
+        return self.uuid == other.uuid
+
+    def __repr__(self):
+        return '<ImageJob %s>' % (self.uuid,)
+
     def __freeze__(self):
         return dict(rbuilder_url=self.rbuilder_url,
                 job_data=self.job_data, uuid=self.uuid)
@@ -28,3 +37,29 @@ class ImageJob(object):
     def assign_uuid(self):
         self.uuid = os.urandom(16).encode('hex')
 register(ImageJob)
+
+
+class _ImageJobs(object):
+    name = 'ImageJobs'
+
+    @staticmethod
+    def __freeze__(jobList):
+        return [freeze('ImageJob', job) for job in jobList]
+
+    @staticmethod
+    def __thaw__(jobList):
+        return [thaw('ImageJob', job) for job in jobList]
+register(_ImageJobs)
+
+
+class _ImageNodes(object):
+    name = 'ImageNodes'
+
+    @staticmethod
+    def __freeze__(nodeList):
+        return [freeze('ImageNode', node) for node in nodeList]
+
+    @staticmethod
+    def __thaw__(nodeList):
+        return [thaw('ImageNode', node) for node in nodeList]
+register(_ImageNodes)

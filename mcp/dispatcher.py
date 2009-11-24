@@ -4,7 +4,6 @@
 # All rights reserved.
 #
 
-import collections
 import logging
 import optparse
 import os
@@ -17,7 +16,8 @@ from mcp.messagebus import messages
 from mcp.messagebus import nodetypes
 from mcp.util import setupLogging
 from os import _exit
-from rmake.lib.apiutils import api, api_parameters, api_return
+from rmake.lib.apiutils import (api, api_parameters, api_return,
+        freeze, thaw, register)
 
 log = logging.getLogger(__name__)
 
@@ -61,14 +61,29 @@ class Dispatcher(bus_node.BusNode):
         self.scheduler.update_node(msg.getSessionId(), msg.getNode())
 
     def handleJobCompleteMessage(self, msg):
-        self.scheduler.remove_job(msg.getSessionId(), msg.getUUID())
+        self.scheduler.remove_job(msg.getUUID())
 
     # API server machinery and entry points
     @api(version=1)
     @api_parameters(1)
-    @api_return(1, None)
+    @api_return(1, 'ImageJobs')
     def list_jobs(self, callData):
+        """Return a list of all known job UUIDs."""
         return self.scheduler.list_jobs()
+
+    @api(version=1)
+    @api_parameters(1)
+    @api_return(1, 'ImageJobs')
+    def list_queued_jobs(self, callData):
+        """Return a list of queued job objects."""
+        return self.scheduler.queued_jobs
+
+    @api(version=1)
+    @api_parameters(1)
+    @api_return(1, 'ImageNodes')
+    def list_nodes(self, callData):
+        """Return a list of all known nodes."""
+        return self.scheduler.nodes.values()
 
     @api(version=1)
     @api_parameters(1, 'ImageJob')
@@ -80,8 +95,7 @@ class Dispatcher(bus_node.BusNode):
     @api_parameters(1, None)
     @api_return(1, None)
     def stop_job(self, callData, uuid):
-        # TODO
-        raise NotImplementedError
+        self.scheduler.stop_job(uuid)
 
 
 class Scheduler(object):
@@ -90,13 +104,17 @@ class Scheduler(object):
     """
     def __init__(self, dispatcher):
         self.dispatcher = weakref.ref(dispatcher)
+
         self.nodes = {}
-        self.queued_jobs = collections.deque()
+        """List of nodes and what jobs they are running."""
+
+        self.queued_jobs = []
+        """List of jobs to start when a slot becomes free."""
 
     # Nodes
     def update_node(self, session_id, node):
         if session_id not in self.nodes:
-            self.nodes[session_id] = SchedulerNode(session_id)
+            self.nodes[session_id] = ImageNode(session_id)
             log.info("Added node %s to pool.", session_id)
         self.nodes[session_id].update(node.slots, node.machineInfo)
         self.assign_jobs()
@@ -146,7 +164,7 @@ class Scheduler(object):
         jobs = set(self.queued_jobs)
         for node in self.nodes.values():
             jobs.update(node.jobs)
-        return sorted(jobs)
+        return jobs
 
     def assign_jobs(self):
         """
@@ -158,7 +176,7 @@ class Scheduler(object):
             if not node:
                 break
             self.send_job(node, job)
-            self.queued_jobs.popleft()
+            self.queued_jobs.pop(0)
 
     def add_job(self, job):
         """
@@ -166,8 +184,7 @@ class Scheduler(object):
         """
         job.assign_uuid()
         self.queued_jobs.append(job)
-        log.info("Added new job %s from %s", job.uuid,
-                job.rbuilder_url)
+        log.info("Added new job %s from %s", job.uuid, job.rbuilder_url)
         self.assign_jobs()
         return job.uuid
 
@@ -180,20 +197,47 @@ class Scheduler(object):
         self.dispatcher().bus.sendMessage('/image_command', msg,
                 node.session_id)
         log.info("Sent job %s to node %s.", job.uuid, node.session_id)
-        node.add_job(job.uuid)
+        node.add_job(job)
 
-    def remove_job(self, session_id, job_uuid):
-        """
-        Remove a job from the specified node.
-        """
-        if session_id not in self.nodes:
+    def remove_job(self, job_uuid):
+        """Remove a job and return the node that was running it, or None."""
+        for node in self.nodes.values():
+            job = node.find_job(job_uuid)
+            if not job:
+                continue
+
+            log.info("Removing job %s", job_uuid)
+            node.remove_job(job)
+            self.assign_jobs()
+            return node
+
+        return None
+
+    def stop_job(self, job_uuid):
+        """Terminate a queued or running job."""
+
+        # Remove from the queue
+        for n, job in enumerate(self.queued_jobs):
+            if job.uuid == job_uuid:
+                log.info("Stopped queued job %s.", job_uuid)
+                self.queued_jobs.remove(job)
+                return
+
+        # Remove from running nodes
+        node = self.remove_job(job_uuid)
+        if not node:
+            log.info("Ignored request to stop unknown job %s.", job_uuid)
             return
-        log.info("Removing job %s", job_uuid)
-        self.nodes[session_id].remove_job(job_uuid)
-        self.assign_jobs()
+
+        msg = messages.StopCommand()
+        msg.set(job_uuid)
+        self.dispatcher().bus.sendMessage('/image_command', msg,
+                node.session_id)
+        log.info("Stopped running job %s on node %s.", job_uuid,
+                node.session_id)
 
 
-class SchedulerNode(object):
+class ImageNode(object):
     def __init__(self, session_id):
         self.session_id = session_id
         self.jobs = set()
@@ -209,11 +253,37 @@ class SchedulerNode(object):
         if not self.first_seen:
             self.first_seen = self.last_seen
 
-    def add_job(self, uuid):
-        self.jobs.add(uuid)
+    def __repr__(self):
+        return '<ImageNode %s>' % (self.session_id,)
 
-    def remove_job(self, uuid):
-        self.jobs.discard(uuid)
+    def __freeze__(self):
+        return {
+                'session_id': self.session_id,
+                'jobs': freeze('ImageJobs', self.jobs),
+                'slots': self.slots,
+                'machine_info': freeze('MachineInformation',
+                    self.machine_info),
+                }
+
+    @classmethod
+    def __thaw__(cls, d):
+        self = cls(d['session_id'])
+        self.jobs = set(thaw('ImageJobs', d['jobs']))
+        self.slots = d['slots']
+        self.machine_info = thaw('MachineInformation', d['machine_info'])
+        return self
+
+    def add_job(self, job):
+        self.jobs.add(job)
+
+    def remove_job(self, job):
+        self.jobs.remove(job)
+
+    def find_job(self, uuid):
+        for job in self.jobs:
+            if job.uuid == uuid:
+                return job
+        return None
 
     def is_alive(self):
         # 16 seconds = 3 heartbeats + 1
@@ -224,6 +294,7 @@ class SchedulerNode(object):
 
     def get_score(self):
         return len(self.jobs) / float(self.slots)
+register(ImageNode)
 
 
 def main(args):
