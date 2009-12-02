@@ -45,6 +45,16 @@ class StopCommand(ImageCommandMessage):
         return self.headers.uuid
 
 
+class SetSlotsCommand(ImageCommandMessage):
+    messageType = 'image_command_set_slots'
+
+    def set(self, slots):
+        self.headers.slots = slots
+
+    def getSlots(self):
+        return self.headers.slots
+
+
 # Events
 class ImageEventMessage(Message):
     pass

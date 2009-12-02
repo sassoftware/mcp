@@ -47,3 +47,6 @@ class Client(object):
 
     def stop_job(self, uuid):
         return self.dispatcher.stop_job(uuid)
+
+    def set_node_slots(self, node_session, slots):
+        return self.dispatcher.set_node_slots(node_session, slots)

@@ -97,6 +97,21 @@ class Dispatcher(bus_node.BusNode):
     def stop_job(self, callData, uuid):
         self.scheduler.stop_job(uuid)
 
+    @api(version=1)
+    @api_parameters(1, None, 'int')
+    @api_return(1, None)
+    def set_node_slots(self, callData, session_id, slots):
+        assert isinstance(slots, (int, long))
+        msg = messages.SetSlotsCommand()
+        msg.set(slots)
+        self.bus.sendMessage('/image_command', msg, session_id)
+
+        node = self.scheduler.nodes.get(session_id)
+        if node:
+            node.slots = slots
+
+        log.info("Changed node %s slot limit to %d.", session_id, slots)
+
 
 class Scheduler(object):
     """
