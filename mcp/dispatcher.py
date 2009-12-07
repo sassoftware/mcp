@@ -253,6 +253,9 @@ class Scheduler(object):
 
 
 class ImageNode(object):
+    # Seconds without receving a heartbeat before we drop a node.
+    node_timeout = 61
+
     def __init__(self, session_id):
         self.session_id = session_id
         self.jobs = set()
@@ -301,8 +304,7 @@ class ImageNode(object):
         return None
 
     def is_alive(self):
-        # 16 seconds = 3 heartbeats + 1
-        return time.time() - self.last_seen < 16
+        return time.time() - self.last_seen < self.node_timeout
 
     def has_slots(self):
         return len(self.jobs) < self.slots
