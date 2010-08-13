@@ -1,0 +1,56 @@
+#
+# Copyright (c) 2010 rPath, Inc.
+#
+# All rights reserved.
+#
+
+loadSuperClass('testpackage=testbits.rb.rpath.com@rpl:1')
+class MCP(PackageRecipe, TestPackageRecipe):
+    name = 'mcp'
+    version = '5.5'
+
+    buildRequires = [
+        'chkconfig:runtime',
+        'python:devel',
+        'python-setuptools:python',
+        'rmake:python',
+      ]
+
+    testDir = '.'
+    codeDirs = {'mcp': 'mcp'}
+
+    def setup(r):
+        r.addMercurialSnapshot()
+
+        #r.run_tests(do_coverage=True)
+        r.PythonSetup()
+
+        # Server bits
+        r.macros.mcpdir = '/srv/rbuilder/mcp'
+        r.Install('bin/mcp-dispatcher', '%(bindir)s/mcp-dispatcher',
+                mode=0755, package='mcp-server')
+        r.Install('distro/mcp-dispatcher.init', '%(initdir)s/mcp-dispatcher',
+                mode=0755, package='mcp-server')
+        r.Install('distro/stub.conf', '%(mcpdir)s/config', 
+                mode=0644, package='mcp-server')
+        r.Install('distro/mcp.logrotate', '/etc/logrotate.d/mcp',
+                mode=0644, package='mcp-server')
+        r.Create('/var/log/rbuilder/.keep.%(name)s', package='mcp-server')
+        r.Transient('%(mcpdir)s/config')
+
+        # Server bits for rMake messagebus control
+        r.Install('distro/rmake-messagebus.init', '%(initdir)s/rmake-messagebus',
+                mode=0755, package='mcp-server')
+        r.Install('distro/rmake-serverrc', '/etc/rmake/server.d/15_mcp.conf',
+                mode=0644, package='mcp-server')
+        r.Requires('/usr/sbin/rmake-messagebus', '%(initdir)s/rmake-messagebus')
+
+        # Funnel source code into a separate package
+        r.PackageSpec('mcp-sources', '.*/site-packages/.*\.py')
+        r.RemoveNonPackageFiles('.*\.egg-info.*')
+
+        # install unit tests for reconsumption
+        #r.macros.testsuite_output = '%(libdir)s/%(name)s-test'
+        #r.MakeDirs('%(testsuite_output)s')
+        #r.Run('cp -a mcp_test %(destdir)s%(testsuite_output)s/')
+        #r.PackageSpec('%(name)s-test', '%(testsuite_output)s/')
