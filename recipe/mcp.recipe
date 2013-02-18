@@ -10,9 +10,8 @@ class MCP(PackageRecipe, TestPackageRecipe):
     version = '5.5'
 
     buildRequires = [
-        'chkconfig:runtime',
-        'python:devel',
-        'python-setuptools:python',
+        'python-devel',
+        'python-setuptools',
         'rmake:python',
       ]
 
