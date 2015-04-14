@@ -1,0 +1,9 @@
+*.pyc
+*.orig
+*.swp
+*,cover
+
+.times
+.coverage
+build/
+*.egg-info

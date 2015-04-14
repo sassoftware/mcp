@@ -1,7 +1,0 @@
-\.(pyc|pyo|orig|swp)$
-,cover$
-
-^test/\.times$
-^test/\.coverage
-^build/
-^[^/]+\.egg-info/

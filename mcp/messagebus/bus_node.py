@@ -46,7 +46,7 @@ class BusNode(apirpc.ApiServer):
     def onTimer(self):
         pass
 
-    def handleRequestIfReady(self, sleepTime):
+    def handleRequestIfReady(self, sleepTime=1.0):
         self.bus.poll(sleepTime, maxIterations=1)
         if time.time() - self.lastTimer >= self.timerPeriod:
             self.onTimer()
